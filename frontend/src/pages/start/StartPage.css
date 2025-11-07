@@ -1,0 +1,198 @@
+
+.startpage-root {
+  height: 100vh;
+  width: 100vw;
+  background: #111821;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.startpage-heading {
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 2rem;
+  letter-spacing: 1px;
+}
+.startpage-input {
+  border: 1.5px solid #4f86f7;
+  background: #1a202b;
+  color: #fff;
+  border-radius: 0.5rem;
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  outline: none;
+  width: 50%;
+  max-width: 500px;
+  transition: border 0.2s;
+  text-align: center;
+}
+.startpage-input::placeholder {
+  color: #b4b9c7;
+  opacity: 1;
+  font-style: italic;
+}
+
+.startpage-input:focus::placeholder {
+  color: transparent;
+}
+.startpage-logo {
+    width: 80px;          /* adjust size */
+    height: auto;
+    fill: #4f86f7;        /* SVG color */
+    margin-bottom: 1.5rem;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.4));
+    animation: glowPulse 2.5s ease-in-out infinite;
+  }
+  
+  /* Pulsating glow animation */
+@keyframes glowPulse {
+    0% {
+      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
+    }
+    50% {
+      filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.8));
+    }
+    100% {
+      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
+    }
+  }
+
+
+  /* --- Burger --- */
+.burger {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 40px;
+    height: 40px;
+    background: transparent;
+    border: 1.5px solid #4f86f7;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    z-index: 100;
+  }
+  
+  .burger span {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: #4f86f7;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  
+  /* --- Overlay --- */
+  .menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 40;
+  }
+  .menu-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  
+  /* --- Sidebar --- */
+  .side-menu {
+    position: fixed;
+    top: 0;
+    left: -260px;
+    width: 260px;
+    height: 100vh;
+    background: #141a25;
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.4);
+    transition: left 0.3s ease;
+    z-index: 50;
+    padding: 2rem 1.5rem;
+    color: #fff;
+  }
+  .side-menu.active {
+    left: 0;
+  }
+  
+  .side-menu-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #4f86f7;
+    margin-top: 3rem;
+  }
+  
+  /* --- Close button --- */
+  .close-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .close-btn span {
+    position: absolute;
+    width: 18px;
+    height: 2px;
+    background: #4f86f7;
+    border-radius: 2px;
+  }
+  
+  .close-btn span:first-child {
+    transform: rotate(45deg);
+  }
+  .close-btn span:last-child {
+    transform: rotate(-45deg);
+  }
+  
+  /* --- Top-right actions --- */
+  .top-right-actions {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 100;
+  }
+  
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1.5px solid #4f86f7;
+    color: #0e1320;
+    background: #4f86f7;
+    text-decoration: none;
+    font-weight: 600;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .action-btn:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 0 0 3px rgba(79, 134, 247, 0.25);
+  }
+  
+  .action-btn.action-primary {
+    background: #4f86f7;
+    color: #0e1320;
+  }
+  
+  .action-btn.action-primary:hover {
+    filter: brightness(1.05);
+    box-shadow: 0 0 0 3px rgba(79, 134, 247, 0.25);
+  }
+

@@ -1,0 +1,7 @@
+.logo {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  margin-bottom: 10px;
+  filter: brightness(0) saturate(100%) invert(48%) sepia(89%) saturate(1686%) hue-rotate(206deg) brightness(99%) contrast(94%) drop-shadow(0 8px 24px rgba(79,134,247,0.35));
+}
