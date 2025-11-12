@@ -7,6 +7,7 @@
 #   "latency_ms": number
 # }
 
+import logging
 import os
 import re
 import time
@@ -14,7 +15,7 @@ import json
 from typing import List
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import google.generativeai as genai
@@ -28,6 +29,9 @@ genai.configure(api_key=API_KEY)
 
 MODEL_NAME = "gemini-2.5-flash"
 model = genai.GenerativeModel(MODEL_NAME)
+
+logger = logging.getLogger("dots.backend")
+logger.setLevel(logging.INFO)
 
 # --- FastAPI app ---
 app = FastAPI(title="LLM Answer Proxy", version="1.0")
@@ -117,6 +121,15 @@ def coerce_response(parsed: dict, question: str) -> AskResponse:
         latency_ms=0,
     )
 
+
+def default_follow_ups(question: str) -> List[str]:
+    return [
+        f"Can you give a simple example related to {question}?",
+        f"How does this compare to related concepts for {question}?",
+        f"What are common pitfalls or misconceptions about {question}?",
+    ]
+
+
 # --- Route ---
 
 
@@ -137,14 +150,16 @@ async def ask(payload: AskRequest):
             cleaned = _FENCE.sub("", raw).strip() or (
                 "Sorry, I could not parse the model response."
             )
+            logger.warning(
+                "Failed to parse Gemini response for '%s': %s",
+                q,
+                raw[:500],
+                exc_info=True,
+            )
             resp = AskResponse(
                 question=q,
                 answer=cleaned[:1000],
-                follow_ups=[
-                    f"Can you give a simple example related to {q}?",
-                    f"How does this compare to related concepts for {q}?",
-                    f"What are common pitfalls or misconceptions about {q}?",
-                ],
+                follow_ups=default_follow_ups(q),
                 latency_ms=0,
             )
 
@@ -152,7 +167,10 @@ async def ask(payload: AskRequest):
         return resp
 
     except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Upstream model error: {e}",
+        logger.error("Gemini call failed for '%s': %s", q, e, exc_info=True)
+        return AskResponse(
+            question=q,
+            answer="Sorry, the answer service is temporarily unavailable.",
+            follow_ups=default_follow_ups(q),
+            latency_ms=int((time.time() - started) * 1000),
         )
