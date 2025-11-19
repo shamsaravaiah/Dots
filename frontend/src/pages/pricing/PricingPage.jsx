@@ -14,7 +14,7 @@ export default function PricingPage() {
     <div className="pricing-page">
       <div className="pricing-page__actions">
         <Button onClick={handleNew} className="button--floating">
-          + New
+           New +
         </Button>
       </div>
       <div className="pricing-page__hero">

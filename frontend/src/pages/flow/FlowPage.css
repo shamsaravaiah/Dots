@@ -4,6 +4,15 @@
   background: #0a0a0a;
   color: white;
   position: relative;
+  transition: padding-left 0.3s ease;
+}
+
+.flow-page.sidebar-collapsed {
+  padding-left: 80px; /* Account for collapsed sidebar */
+}
+
+.flow-page.sidebar-expanded {
+  padding-left: 260px; /* Account for expanded sidebar */
 }
 
 /* Skeleton Loading Styles - Responsive and Animated */
@@ -65,17 +74,30 @@
 
 .flow-page__actions {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 20px;
+  right: 20px;
   display: flex;
-  gap: 12px;
-  z-index: 20;
+  gap: 10px;
+  z-index: 100;
 }
 
-.flow-page__actions .button--floating {
-  position: relative;
-  top: auto;
-  right: auto;
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1.5px solid #4f86f7;
+  color: #0e1320;
+  background: #4f86f7;
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 0 0 3px rgba(79, 134, 247, 0.25);
 }
 
 .input-node-wrapper {
@@ -214,4 +236,402 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+/* --- Sidebar --- */
+.side-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 80px;
+  height: 100vh;
+  background: #141a25;
+  border-right: 1px solid rgba(79, 134, 247, 0.2);
+  transition: width 0.3s ease;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+}
+
+.side-menu.active {
+  width: 260px;
+}
+
+/* Sidebar toggle button - only visible when collapsed */
+.side-menu-toggle {
+  width: 100%;
+  height: 60px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(79, 134, 247, 0.2);
+  color: #4f86f7;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+  padding: 0;
+}
+
+.side-menu-toggle:hover {
+  background: rgba(79, 134, 247, 0.1);
+}
+
+.side-menu-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.side-menu-toggle-logo {
+  width: 40px;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Close button - only visible when expanded, top right */
+.side-menu-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  color: #4f86f7;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+  border-radius: 6px;
+  z-index: 10;
+}
+
+.side-menu-close:hover {
+  background: rgba(79, 134, 247, 0.1);
+}
+
+.side-menu-close svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Sidebar icons - stay in same position on the left */
+.side-menu-icons {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 0;
+  padding-left: 16px;
+  flex: 1;
+  position: absolute;
+  left: 0;
+  top: 60px;
+  width: 80px;
+  transition: width 0.3s ease;
+}
+
+.side-menu.active .side-menu-icons {
+  width: 100%;
+}
+
+.side-menu-icon {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  color: #b4b9c7;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transition: background 0.2s ease, color 0.2s ease;
+  padding: 0 12px;
+  flex-shrink: 0;
+  gap: 12px;
+  position: relative;
+}
+
+.side-menu.active .side-menu-icon {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.side-menu-icon-label {
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.side-menu.active .side-menu-icon-label {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.side-menu-icon:hover {
+  background: rgba(79, 134, 247, 0.1);
+  color: #4f86f7;
+}
+
+/* Tooltip styling for icons when sidebar is closed */
+.side-menu-icon[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: 60px;
+  background: rgba(20, 26, 37, 0.95);
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  border: 1px solid rgba(79, 134, 247, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: tooltipFadeIn 0.1s ease;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.side-menu-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* --- User menu bubble at bottom of sidebar --- */
+.user-menu-bubble {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  width: 48px;
+  transition: width 0.3s ease;
+}
+
+.user-menu-bubble.expanded {
+  width: calc(100% - 40px);
+  left: 20px;
+  transform: none;
+}
+
+.user-menu-bubble-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #141a25;
+  border: 1.5px solid #4f86f7;
+  border-radius: 12px;
+  padding: 8px;
+  width: 100%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.user-menu-bubble-trigger:hover:not(:disabled) {
+  background: rgba(79, 134, 247, 0.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.user-menu-bubble-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.user-menu-bubble.expanded .user-menu-bubble-trigger {
+  padding: 8px 12px;
+}
+
+.user-menu-bubble-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid #4f86f7;
+  position: relative;
+  background: #1a202b;
+}
+
+.user-menu-bubble.expanded .user-menu-bubble-avatar {
+  width: 40px;
+  height: 40px;
+}
+
+.user-menu-bubble-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-menu-bubble-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  background: #4f86f7;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.user-menu-bubble-name {
+  color: #fff;
+  font-weight: 500;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* --- User menu popup --- */
+.user-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 60;
+}
+
+.user-menu-popup {
+  position: absolute;
+  bottom: 70px;
+  left: 0;
+  width: 280px;
+  background: #1a202b;
+  border: 1.5px solid #4f86f7;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 70;
+  overflow: hidden;
+}
+
+.user-menu-bubble:not(.expanded) .user-menu-popup {
+  left: 60px;
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 1.25rem;
+  background: rgba(79, 134, 247, 0.05);
+}
+
+.user-menu-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid #4f86f7;
+  position: relative;
+  background: #1a202b;
+}
+
+.user-menu-avatar-large img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-menu-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  background: #4f86f7;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.3rem;
+}
+
+.user-menu-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-menu-name {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-menu-email {
+  color: #b4b9c7;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: rgba(79, 134, 247, 0.2);
+  margin: 8px 0;
+}
+
+.user-menu-options {
+  padding: 8px 0;
+}
+
+.user-menu-option {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #fff;
+  text-align: left;
+  padding: 12px 1.25rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.user-menu-option:hover {
+  background: rgba(79, 134, 247, 0.1);
+}
+
+.user-menu-option--danger {
+  color: #fca5a5;
+}
+
+.user-menu-option--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}
+
+.user-menu-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.user-menu-option:disabled:hover {
+  background: transparent;
 }
