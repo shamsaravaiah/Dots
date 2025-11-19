@@ -635,3 +635,23 @@
 .user-menu-option:disabled:hover {
   background: transparent;
 }
+
+/* Answer text styling - white color for all markdown elements */
+.qa-node-answer {
+  color: #ffffff;
+}
+
+.qa-node-answer p,
+.qa-node-answer h1,
+.qa-node-answer h2,
+.qa-node-answer h3,
+.qa-node-answer h4,
+.qa-node-answer h5,
+.qa-node-answer h6,
+.qa-node-answer li,
+.qa-node-answer strong,
+.qa-node-answer em,
+.qa-node-answer code,
+.qa-node-answer blockquote {
+  color: #ffffff;
+}

@@ -21,18 +21,12 @@ _FENCE = re.compile(r"```(?:json)?\n([\s\S]*?)```", re.IGNORECASE)
 
 
 PROMPT_TEMPLATE = (
-    "You are a concise tutor. Reply ONLY with JSON:\n"
-    "{\n"
-    '  "answer": string,\n'
-    '  "follow_ups": [string, string, string]\n'
-    "}\n\n"
+    "You are a concise tutor. Reply in markdown format.\n\n"
     "Answer rules:\n"
-    '- 3-6 lines total, each starting with "- ".\n'
-    "- Line 1 = gist. Lines 2-4 = key facts. Optional 'Note: ...'.\n"
-    "- Max 550 characters, plain text only.\n\n"
-    "Follow-up rules:\n"
-    "- Exactly 3 questions, short (≤12 words), ending with '?'.\n\n"
-    "No extra keys. Reply in the user's language.\n\n"
+    "- Provide a clear, concise answer in 3-6 lines\n"
+    "- Use markdown formatting (bold, lists, etc.) as appropriate\n"
+    "- Max 550 characters\n"
+    "- Be helpful and educational\n\n"
     "Question: {question}\n"
 )
 
@@ -46,35 +40,58 @@ def _default_follow_ups(question: str) -> List[str]:
 
 
 def _extract_json(text: str) -> Dict[str, object]:
+    import json
+
     match = _FENCE.search(text)
     candidate = match.group(1) if match else text
     start = candidate.find("{")
     end = candidate.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("No JSON object found in model response.")
-    import json
 
-    return json.loads(candidate[start:end + 1])
+    json_str = candidate[start:end + 1]
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        # Log the actual JSON string for debugging
+        logger.warning(
+            "JSON decode error: %s. Attempted to parse: %s",
+            e,
+            json_str[:200],
+        )
+        raise ValueError(f"Invalid JSON in model response: {e}") from e
 
 
 def _coerce_answer(
     parsed: Dict[str, object],
     question: str,
 ) -> Dict[str, object]:
-    answer = str(parsed.get("answer", "")).strip()
-    follow_ups = parsed.get("follow_ups", [])
-    if not isinstance(follow_ups, list):
-        follow_ups = []
-    follow_ups = [
-        str(item).strip()
-        for item in follow_ups
-        if str(item).strip()
-    ][:3]
-    while len(follow_ups) < 3:
-        follow_ups.append(_default_follow_ups(question)[len(follow_ups)])
-    if not answer:
-        answer = "No answer provided."
-    return {"answer": answer, "follow_ups": follow_ups}
+    try:
+        answer = str(parsed.get("answer", "")).strip()
+        follow_ups = parsed.get("follow_ups", [])
+        if not isinstance(follow_ups, list):
+            follow_ups = []
+        follow_ups = [
+            str(item).strip()
+            for item in follow_ups
+            if str(item).strip()
+        ][:3]
+        while len(follow_ups) < 3:
+            follow_ups.append(_default_follow_ups(question)[len(follow_ups)])
+        if not answer:
+            answer = "No answer provided."
+        return {"answer": answer, "follow_ups": follow_ups}
+    except Exception as e:
+        logger.warning(
+            "Error in _coerce_answer: %s. Parsed: %s",
+            e,
+            parsed,
+        )
+        # Return safe defaults
+        return {
+            "answer": "Sorry, I could not process the model response.",
+            "follow_ups": _default_follow_ups(question),
+        }
 
 
 def sanitize_question(question: str, max_length: int = 500) -> str:
@@ -133,11 +150,20 @@ class LLMService:
                     raw_text=response,
                 )
             except google_exceptions.PermissionDenied as exc:
-                logger.error("API key permission denied; rotating key.")
+                logger.error(
+                    "API key permission denied; rotating key. "
+                    "Error: %s", str(exc)
+                )
                 self._key_manager.record_failure(slot)
                 last_exception = exc
             except Exception as exc:  # pylint: disable=broad-except
-                logger.exception("LLM invocation failed: %s", exc)
+                error_msg = str(exc)
+                logger.exception(
+                    "LLM invocation failed: %s. "
+                    "Error type: %s",
+                    error_msg,
+                    type(exc).__name__,
+                )
                 self._key_manager.record_failure(slot)
                 last_exception = exc
 
@@ -158,23 +184,44 @@ class LLMService:
         return self._settings.google_default_model
 
     def _invoke_model(self, model_name: str, question: str) -> str:
-        model = genai.GenerativeModel(model_name)
-        prompt = PROMPT_TEMPLATE.format(question=question)
-        result = model.generate_content(prompt)
-        return result.text or ""
+        try:
+            model = genai.GenerativeModel(model_name)
+            prompt = PROMPT_TEMPLATE.format(question=question)
+            logger.debug(
+                "Calling model %s with prompt length: %d",
+                model_name,
+                len(prompt),
+            )
+            result = model.generate_content(prompt)
+            response_text = result.text or ""
+            if not response_text:
+                logger.warning("Model returned empty response")
+                response_text = (
+                    "Sorry, I received an empty response from the model."
+                )
+            logger.info(
+                "LLM raw response (first 500 chars): %s",
+                response_text[:500],
+            )
+            return response_text
+        except Exception as e:
+            logger.error("Error in _invoke_model: %s", str(e))
+            raise
 
     def _parse_response(self, raw: str, question: str) -> Dict[str, object]:
-        try:
-            parsed = _extract_json(raw)
-            return _coerce_answer(parsed, question)
-        except Exception:  # pylint: disable=broad-except
-            logger.warning(
-                "Failed to parse model response, returning raw text.",
-            )
-            cleaned = _FENCE.sub("", raw).strip()
-            if not cleaned:
-                cleaned = "Sorry, I could not parse the model response."
-            return {
-                "answer": cleaned[:1000],
-                "follow_ups": _default_follow_ups(question),
-            }
+        """Parse markdown response and generate follow-ups."""
+        # Clean up the response - remove code fences if present
+        cleaned = _FENCE.sub("", raw).strip()
+        if not cleaned:
+            cleaned = raw.strip()
+
+        if not cleaned:
+            cleaned = "Sorry, I could not generate a response."
+
+        # Generate follow-up questions
+        follow_ups = _default_follow_ups(question)
+
+        return {
+            "answer": cleaned[:1000],  # Limit answer length
+            "follow_ups": follow_ups,
+        }

@@ -1,5 +1,7 @@
 """Application entrypoint for the Dots backend proxy service."""
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,23 +14,72 @@ from .services.key_manager import KeyManager
 from .services.llm import LLMService
 from .services.usage import UsageService
 from .services.canvas import CanvasService
+import os
 
 
-load_dotenv()
+# Resolve backend directory: .../dots/backend
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
+
+# Load .env for THIS process (including the uvicorn reloader child)
+load_dotenv(ENV_PATH)
 
 
 def create_app() -> FastAPI:
     """Construct the FastAPI application with shared state."""
-    settings = get_settings()
+    import logging
 
-    if not settings.google_api_keys:
-        raise RuntimeError(
-            "No Google API keys configured. "
-            "Set GOOGLE_API_KEYS or GOOGLE_API_KEY."
+    _backend_dir = Path(__file__).parent.parent
+    _env_path = _backend_dir / ".env"
+
+    logger = logging.getLogger("dots.main")
+    logger.info("Creating app, looking for .env at: %s", _env_path)
+    logger.info(".env file exists: %s", _env_path.exists())
+
+    # Load .env file if it exists
+    if _env_path.exists():
+        load_dotenv(dotenv_path=_env_path, override=True)
+        logger.info("Loaded .env file from %s", _env_path)
+    else:
+        logger.warning(
+            ".env file not found at %s. Trying to continue with "
+            "environment variables.",
+            _env_path,
         )
 
+    # 1) Check env directly for the paid Gemini key
+    key_value = os.getenv("GEMINI_DOTS_PAID_1")
+    if not key_value:
+        logger.error(
+            "GEMINI_DOTS_PAID_1 not found in environment. "
+            "Checked .env at: %s",
+            _env_path,
+        )
+        raise RuntimeError(
+            "GEMINI_DOTS_PAID_1 key not configured. "
+            "Set GEMINI_DOTS_PAID_1 in your .env file at %s" % _env_path
+        )
+
+    logger.info("GEMINI_DOTS_PAID_1 is set (length: %d)", len(key_value))
+
+    # 2) Now get settings (for everything else)
+    settings = get_settings()
+
+    # 3) Make sure settings has the key too; if not, patch it from env
+    if not settings.google_dots_paid_api_key_1:
+        logger.warning(
+            "settings.google_dots_paid_api_key_1 is empty; "
+            "falling back to GEMINI_DOTS_PAID_1 from environment."
+        )
+        # This is safe: Settings is just a Pydantic model instance
+        settings.google_dots_paid_api_key_1 = key_value
+
+    # 4) Build API key list from the value we now know exists
+    api_keys = [settings.google_dots_paid_api_key_1]
+    logger.info("Total API keys loaded: %d", len(api_keys))
+
     key_manager = KeyManager(
-        keys=settings.google_api_keys,
+        keys=api_keys,
         cooldown_seconds=settings.key_cooldown_seconds,
     )
     llm_service = LLMService(

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field, validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
@@ -18,8 +19,8 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "features": {"image_search": False},
     },
     "free": {
-        "max_canvases": 5,
-        "node_quota": {"daily": 20},
+        "max_canvases": 3,
+        "node_quota": {"per_canvas": 5},
         "autosave_interval_seconds": 60,
         "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
         "features": {"image_search": True},
@@ -31,15 +32,39 @@ DEFAULT_PLANS: Dict[str, Dict[str, Any]] = {
         "models": ["gemini-2.5-pro"],
         "features": {"image_search": True, "collaboration": True},
     },
+    "dev": {
+        "max_canvases": None,
+        "node_quota": {"daily": None},
+        "autosave_interval_seconds": 15,
+        "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
+        "features": {"image_search": True, "collaboration": True},
+    },
 }
 
 
 class Settings(BaseSettings):
     """Global application settings loaded from environment variables."""
 
+    # Correct: backend/.env, no absolute path concatenation
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).parent.parent / ".env"),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
     google_api_keys: List[str] = Field(
         default_factory=list,
         env="GOOGLE_API_KEYS",
+    )
+    google_dots_paid_api_key_1: Optional[str] = Field(
+        None, env="GEMINI_DOTS_PAID_1"
+    )
+    google_dots_paid_api_key_2: Optional[str] = Field(
+        None, env="GEMINI_DOTS_PAID_2"
+    )
+    google_dots_paid_api_key_3: Optional[str] = Field(
+        None, env="GEMINI_DOTS_PAID_3"
     )
     google_default_model: str = Field("gemini-2.5-flash", env="GOOGLE_MODEL")
     key_cooldown_seconds: int = Field(600, env="GOOGLE_KEY_COOLDOWN_SECONDS")
@@ -102,17 +127,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
     jwt_expiration_hours: int = Field(24, env="JWT_EXPIRATION_HOURS")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra fields from .env file
-
     @validator("google_api_keys", pre=True)
     def _split_keys(cls, value: Any) -> List[str]:
         if not value:
-            # Fallback to single key env for backwards compatibility.
             import os
-
             fallback = os.getenv("GOOGLE_API_KEY")
             return [fallback] if fallback else []
         if isinstance(value, str):
@@ -136,9 +154,7 @@ class Settings(BaseSettings):
         if not value:
             return DEFAULT_PLANS
         if isinstance(value, str):
-            # Allow JSON string overrides
             import json
-
             return json.loads(value)
         return value
 

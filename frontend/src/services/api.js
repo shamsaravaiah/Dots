@@ -31,10 +31,22 @@ async function apiRequest(endpoint, options = {}) {
       const error = await response
         .json()
         .catch(() => ({ detail: response.statusText }));
+      
+      // Handle structured error responses with upgrade information
       const errorObj = new Error(
-        error.detail || `HTTP error! status: ${response.status}`
+        error.message || error.detail || `HTTP error! status: ${response.status}`
       );
       errorObj.response = { data: error, status: response.status };
+      
+      // Add upgrade information if present
+      if (error.upgrade_required) {
+        errorObj.upgrade_required = true;
+        errorObj.upgrade_url = error.upgrade_url || '/pricing';
+        errorObj.limit_type = error.limit_type;
+        errorObj.current_usage = error.current_usage;
+        errorObj.limit = error.limit;
+      }
+      
       throw errorObj;
     }
 

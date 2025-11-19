@@ -10,6 +10,7 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import ReactMarkdown from 'react-markdown';
 import Button from "../../components/common/Button/Button";
 import { authAPI } from "../../services/api";
 import "./FlowPage.css";
@@ -63,13 +64,30 @@ function QaNode({ data, id }) {
       )}
       {state === 'answer' && (
         <>
-          <div style={{ 
-            whiteSpace: 'pre-wrap', 
-            lineHeight: 1.35, 
+          <div className="qa-node-answer" style={{ 
+            lineHeight: 1.5, 
             marginBottom: 12,
             animation: 'fadeIn 0.3s ease-in',
             width: '100%'
-          }}>{answer}</div>
+          }}>
+            <ReactMarkdown
+              components={{
+                p: ({node, ...props}) => <p {...props} />,
+                h1: ({node, ...props}) => <h1 style={{fontSize: '1.5em', margin: '12px 0'}} {...props} />,
+                h2: ({node, ...props}) => <h2 style={{fontSize: '1.3em', margin: '10px 0'}} {...props} />,
+                h3: ({node, ...props}) => <h3 style={{fontSize: '1.1em', margin: '8px 0'}} {...props} />,
+                ul: ({node, ...props}) => <ul style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
+                ol: ({node, ...props}) => <ol style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
+                li: ({node, ...props}) => <li style={{margin: '4px 0'}} {...props} />,
+                strong: ({node, ...props}) => <strong {...props} />,
+                em: ({node, ...props}) => <em {...props} />,
+                code: ({node, ...props}) => <code style={{background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px'}} {...props} />,
+                blockquote: ({node, ...props}) => <blockquote style={{borderLeft: '3px solid rgba(255,255,255,0.3)', paddingLeft: '10px', margin: '8px 0'}} {...props} />,
+              }}
+            >
+              {answer}
+            </ReactMarkdown>
+          </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -262,19 +280,62 @@ export default function FlowPage() {
   }), []);
 
   const askApi = useCallback(async (question) => {
+    const token = authAPI.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
     const response = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ question })
     });
+    
     if (!response.ok) {
-      const text = await response.text().catch(() => '');
+      const errorData = await response.json().catch(() => ({ 
+        detail: response.statusText 
+      }));
+      
+      // Handle upgrade-required errors gracefully
+      // Check if upgrade_required is in detail object or top level
+      const upgradeRequired = errorData.upgrade_required || 
+                             (errorData.detail && errorData.detail.upgrade_required);
+      
+      if (upgradeRequired) {
+        // Extract message from detail object or top level
+        const upgradeMessage = errorData.message || 
+                              (errorData.detail && errorData.detail.message) ||
+                              'Upgrade required to continue';
+        const upgradeUrl = errorData.upgrade_url ||
+                          (errorData.detail && errorData.detail.upgrade_url) ||
+                          '/pricing';
+        
+        // Show user-friendly message
+        alert(upgradeMessage);
+        // Redirect to pricing page
+        navigate(upgradeUrl);
+        throw new Error(upgradeMessage);
+      }
+      
       // Surface status/text to console for debugging
-      console.error('Ask API failed', response.status, text);
-      throw new Error('Failed to fetch answer');
+      console.error('Ask API failed', response.status, errorData);
+      
+      // Handle detail as object or string
+      let errorMessage = errorData.message;
+      if (!errorMessage && errorData.detail) {
+        if (typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || JSON.stringify(errorData.detail);
+        } else {
+          errorMessage = errorData.detail;
+        }
+      }
+      throw new Error(errorMessage || 'Failed to fetch answer');
     }
     return response.json();
-  }, []);
+  }, [navigate]);
 
   // Refs for handlers to avoid circular dependencies
   const askApiRef = useRef(askApi);
@@ -369,11 +430,16 @@ export default function FlowPage() {
       });
       addSuggestionChildrenRef.current(newNodeId, inputPosition, result.follow_ups || []);
     } catch (e) {
+      // Don't show error message if it's an upgrade redirect
+      if (e.isUpgradeRequired) {
+        return; // Let the redirect happen
+      }
+      console.error('Ask API error:', e);
       setNodes((prev) => prev.map((n) => n.id === newNodeId ? {
         ...n,
         data: { 
           question, 
-          answer: 'Failed to fetch answer.', 
+          answer: `Error: ${e.message || 'Failed to fetch answer.'}`, 
           state: 'answer',
           onAskFollowUp: handleAskFollowUpRef.current
         }
@@ -749,9 +815,14 @@ export default function FlowPage() {
           } : n));
           addSuggestionChildren(rootId, rootPos, result.follow_ups || []);
         } catch (e) {
+          // Don't show error message if it's an upgrade redirect
+          if (e.isUpgradeRequired) {
+            return; // Let the redirect happen
+          }
+          console.error('Ask API error:', e);
           setNodes((prev) => prev.map((n) => n.id === rootId ? {
             ...n,
-            data: { question: prompt, answer: 'Failed to fetch answer.', state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
+            data: { question: prompt, answer: `Error: ${e.message || 'Failed to fetch answer.'}`, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
           } : n));
         }
       })();
@@ -923,9 +994,14 @@ export default function FlowPage() {
       // Use the stored position to ensure accuracy
       addSuggestionChildren(nodeId, nodePosition, result.follow_ups || []);
     } catch (e) {
+      // Don't show error message if it's an upgrade redirect
+      if (e.isUpgradeRequired) {
+        return; // Let the redirect happen
+      }
+      console.error('Ask API error:', e);
       setNodes((prev) => prev.map((n) => n.id === nodeId ? {
         ...n,
-        data: { question, answer: 'Failed to fetch answer.', state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
+        data: { question, answer: `Error: ${e.message || 'Failed to fetch answer.'}`, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
       } : n));
       setTimeout(() => {
         const updatedNode = nodesRef.current.find((n) => n.id === nodeId);

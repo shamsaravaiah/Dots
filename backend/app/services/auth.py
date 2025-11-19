@@ -232,6 +232,17 @@ class AuthService:
             # Preserve plan if it exists, otherwise default to "free"
             if "plan" not in user_doc:
                 user_doc["plan"] = "free"
+            # Initialize usage tracking fields if they don't exist
+            if "chats_used" not in user_doc:
+                user_doc["chats_used"] = 0
+            if "messages_used" not in user_doc:
+                user_doc["messages_used"] = 0
+            if "messages_today" not in user_doc:
+                user_doc["messages_today"] = 0
+            if "last_message_date" not in user_doc:
+                user_doc["last_message_date"] = None
+            if "flagship_trial_used" not in user_doc:
+                user_doc["flagship_trial_used"] = False
         else:
             # Create new user
             def _create_doc_id():
@@ -249,6 +260,12 @@ class AuthService:
                 "created_at": now,
                 "updated_at": now,
                 "last_login_at": now,
+                # Usage tracking fields
+                "chats_used": 0,
+                "messages_used": 0,
+                "messages_today": 0,
+                "last_message_date": None,
+                "flagship_trial_used": False,
             }
 
         # Save to Firestore
