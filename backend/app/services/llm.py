@@ -27,6 +27,13 @@ PROMPT_TEMPLATE = (
     "- Use markdown formatting (bold, lists, etc.) as appropriate\n"
     "- Max 550 characters\n"
     "- Be helpful and educational\n\n"
+    "After your answer, generate 3 specific follow-up questions that would "
+    "help the student learn more about this topic. Make them diverse, "
+    "relevant, and build on your answer. Format them as:\n"
+    "FOLLOW-UPS:\n"
+    "1. [question 1]\n"
+    "2. [question 2]\n"
+    "3. [question 3]\n\n"
     "Question: {question}\n"
 )
 
@@ -218,10 +225,49 @@ class LLMService:
         if not cleaned:
             cleaned = "Sorry, I could not generate a response."
 
-        # Generate follow-up questions
-        follow_ups = _default_follow_ups(question)
+        # Try to extract follow-up questions from the response
+        follow_ups = self._extract_follow_ups(cleaned, question)
+
+        # Remove follow-ups section from the answer
+        answer = self._remove_follow_ups_section(cleaned)
 
         return {
-            "answer": cleaned[:1000],  # Limit answer length
+            "answer": answer[:1000],  # Limit answer length
             "follow_ups": follow_ups,
         }
+
+    def _extract_follow_ups(self, text: str, question: str) -> List[str]:
+        """Extract follow-up questions from LLM response."""
+        # Look for "FOLLOW-UPS:" or "Follow-ups:" section
+        follow_ups_pattern = re.compile(
+            r'(?:FOLLOW-UPS?|Follow-ups?):\s*\n((?:\d+\.\s*[^\n]+\n?)+)',
+            re.IGNORECASE | re.MULTILINE,
+        )
+        match = follow_ups_pattern.search(text)
+
+        if match:
+            follow_ups_text = match.group(1)
+            # Extract numbered questions
+            questions = re.findall(r'\d+\.\s*([^\n]+)', follow_ups_text)
+            if questions and len(questions) >= 3:
+                return [q.strip() for q in questions[:3]]
+
+        # Fallback: try to find any numbered list at the end
+        numbered_pattern = re.compile(r'(\d+\.\s*[^\n]+)', re.IGNORECASE)
+        matches = numbered_pattern.findall(text)
+        if len(matches) >= 3:
+            return [m.strip() for m in matches[-3:]]
+
+        # Last resort: use default follow-ups
+        return _default_follow_ups(question)
+
+    def _remove_follow_ups_section(self, text: str) -> str:
+        """Remove the follow-ups section from the answer text."""
+        # Remove "FOLLOW-UPS:" section
+        text = re.sub(
+            r'(?:FOLLOW-UPS?|Follow-ups?):\s*\n(?:\d+\.\s*[^\n]+\n?)+',
+            '',
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        return text.strip()

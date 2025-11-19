@@ -27,7 +27,7 @@ const NODE_VERTICAL_GAP = 40;
 
 // Custom node renderer supporting: loading, answer, and suggestion states
 function QaNode({ data, id }) {
-  const { question, answer, state, onAskFollowUp } = data;
+  const { question, answer, state, onAskFollowUp, images } = data;
   return (
     <div style={{
       border: `1px solid ${BLUE}`,
@@ -88,6 +88,41 @@ function QaNode({ data, id }) {
               {answer}
             </ReactMarkdown>
           </div>
+          
+          {/* Display images if available */}
+          {images && images.length > 0 && (
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '12px',
+              flexWrap: 'wrap'
+            }}>
+              {images.map((img, idx) => (
+                <img
+                  key={idx}
+                  src={img.thumbnail || img.url}
+                  alt={img.title || 'Educational image'}
+                  style={{
+                    width: '90px',
+                    height: '90px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(79, 134, 247, 0.3)',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => {
+                    if (img.url) {
+                      window.open(img.url, '_blank');
+                    }
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -424,7 +459,8 @@ export default function FlowPage() {
             question: result.question, 
             answer: result.answer, 
             state: 'answer',
-            onAskFollowUp: handleAskFollowUpRef.current
+            onAskFollowUp: handleAskFollowUpRef.current,
+            images: result.image_results || []
           }
         } : n);
       });
@@ -811,7 +847,7 @@ export default function FlowPage() {
           const result = await askApi(prompt);
           setNodes((prev) => prev.map((n) => n.id === rootId ? {
             ...n,
-            data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
+            data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current, images: result.image_results || [] }
           } : n));
           addSuggestionChildren(rootId, rootPos, result.follow_ups || []);
         } catch (e) {
@@ -967,7 +1003,7 @@ export default function FlowPage() {
       // Update node state to answer
       setNodes((prev) => prev.map((n) => n.id === nodeId ? {
         ...n,
-        data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
+        data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current, images: result.image_results || [] }
       } : n));
       setTimeout(() => {
         const updatedNode = nodesRef.current.find((n) => n.id === nodeId);
