@@ -12,7 +12,16 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import ReactMarkdown from 'react-markdown';
 import Button from "../../components/common/Button/Button";
+import Sidebar from "../../components/layout/Sidebar/Sidebar";
 import { authAPI } from "../../services/api";
+import { nodeAPI } from "../../services/nodeAPI";
+import { canvasAPI } from "../../services/canvasAPI";
+import { useAutosave } from "../../hooks/useAutosave";
+import {
+  reactFlowNodeToNodePayload,
+  nodePayloadToReactFlowNode,
+  createNodePatch,
+} from "../../utils/nodeConverter";
 import "./FlowPage.css";
 
 const BLUE = "#4F86F7";
@@ -25,20 +34,43 @@ const NODE_HEIGHT_EXPANDED = 240;
 const INPUT_NODE_HEIGHT = 130;
 const NODE_VERTICAL_GAP = 40;
 
+// Module-level Set to track initialized prompts (persists across React Strict Mode unmounts/remounts)
+// This prevents duplicate node creation when Strict Mode runs effects twice
+const initializedPrompts = new Set();
+
 // Custom node renderer supporting: loading, answer, and suggestion states
 function QaNode({ data, id }) {
   const { question, answer, state, onAskFollowUp, images } = data;
+  
+  // Handle mouse down to allow text selection without interfering with node dragging
+  const handleMouseDown = (e) => {
+    // Only interfere if user is actively selecting text (has a selection)
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) {
+      // User is selecting text - don't let ReactFlow interfere
+      e.stopPropagation();
+    }
+    // Otherwise, let ReactFlow handle the event normally for dragging
+  };
+  
   return (
-    <div style={{
-      border: `1px solid ${BLUE}`,
-      background: state === 'suggestion' ? '#2a2a2a' : '#141414',
-      color: BLUE,
-      borderRadius: 16,
-      padding: 12,
-      minWidth: 220,
-      maxWidth: 320,
-      boxShadow: '0 14px 40px rgba(0,0,0,0.35)'
-    }}>
+    <div 
+      style={{
+        border: `1px solid ${BLUE}`,
+        background: state === 'suggestion' ? '#2a2a2a' : '#141414',
+        color: BLUE,
+        borderRadius: 16,
+        padding: 12,
+        minWidth: 220,
+        maxWidth: 320,
+        boxShadow: '0 14px 40px rgba(0,0,0,0.35)',
+        userSelect: 'text',
+        WebkitUserSelect: 'text',
+        MozUserSelect: 'text',
+        msUserSelect: 'text'
+      }}
+      onMouseDown={handleMouseDown}
+    >
       {/* Hidden handle on the right (source - for outgoing edges) */}
       <Handle
         type="source"
@@ -52,7 +84,17 @@ function QaNode({ data, id }) {
         style={{ opacity: 0, pointerEvents: "none" }}
       />
       
-      <div style={{ fontWeight: 700, marginBottom: 8, color: BLUE }}>{question}</div>
+      <div style={{ 
+        fontWeight: 700, 
+        marginBottom: 8, 
+        color: BLUE,
+        userSelect: 'text',
+        WebkitUserSelect: 'text',
+        MozUserSelect: 'text',
+        msUserSelect: 'text'
+      }}>
+        {question}
+      </div>
       {state === 'loading' && (
         <div style={{ marginTop: 8, width: '100%' }}>
           <div className="skeleton skeleton-line" />
@@ -72,17 +114,17 @@ function QaNode({ data, id }) {
           }}>
             <ReactMarkdown
               components={{
-                p: ({node, ...props}) => <p {...props} />,
-                h1: ({node, ...props}) => <h1 style={{fontSize: '1.5em', margin: '12px 0'}} {...props} />,
-                h2: ({node, ...props}) => <h2 style={{fontSize: '1.3em', margin: '10px 0'}} {...props} />,
-                h3: ({node, ...props}) => <h3 style={{fontSize: '1.1em', margin: '8px 0'}} {...props} />,
-                ul: ({node, ...props}) => <ul style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
-                ol: ({node, ...props}) => <ol style={{margin: '8px 0', paddingLeft: '20px'}} {...props} />,
-                li: ({node, ...props}) => <li style={{margin: '4px 0'}} {...props} />,
-                strong: ({node, ...props}) => <strong {...props} />,
-                em: ({node, ...props}) => <em {...props} />,
-                code: ({node, ...props}) => <code style={{background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px'}} {...props} />,
-                blockquote: ({node, ...props}) => <blockquote style={{borderLeft: '3px solid rgba(255,255,255,0.3)', paddingLeft: '10px', margin: '8px 0'}} {...props} />,
+                p: ({node, ...props}) => <p style={{userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                h1: ({node, ...props}) => <h1 style={{fontSize: '1.5em', margin: '12px 0', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                h2: ({node, ...props}) => <h2 style={{fontSize: '1.3em', margin: '10px 0', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                h3: ({node, ...props}) => <h3 style={{fontSize: '1.1em', margin: '8px 0', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                ul: ({node, ...props}) => <ul style={{margin: '8px 0', paddingLeft: '20px', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                ol: ({node, ...props}) => <ol style={{margin: '8px 0', paddingLeft: '20px', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                li: ({node, ...props}) => <li style={{margin: '4px 0', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                strong: ({node, ...props}) => <strong style={{userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                em: ({node, ...props}) => <em style={{userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                code: ({node, ...props}) => <code style={{background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '3px', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
+                blockquote: ({node, ...props}) => <blockquote style={{borderLeft: '3px solid rgba(255,255,255,0.3)', paddingLeft: '10px', margin: '8px 0', userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text'}} {...props} />,
               }}
             >
               {answer}
@@ -234,16 +276,18 @@ export default function FlowPage() {
   const navigate = useNavigate();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [isMenuOpen, setIsMenuOpen] = useState(false); // Sidebar collapsed by default
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // Track sidebar state for page padding
   const [rfInstance, setRfInstance] = useState(null);
   const rfInstanceRef = useRef(null);
   const initializedPromptRef = useRef(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const isInitializingRef = useRef(false); // Track if initialization is in progress to prevent duplicates
+  const currentRootNodeIdRef = React.useRef(null); // Track current root node to prevent accidental clearing
+  const [user, setUser] = useState(null); // Keep user state for ownerId
+  
+  // Canvas and node management state
+  const [canvasId, setCanvasId] = useState(null);
+  const [canvasLoaded, setCanvasLoaded] = useState(false);
+  const savedNodeIdsRef = useRef(new Set()); // Track which nodes have been saved
   
   // Refs to store current state for synchronous access
   const nodesRef = useRef(nodes);
@@ -257,6 +301,96 @@ export default function FlowPage() {
   React.useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  // Minimal auth check for ownerId (needed for saving nodes)
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = authAPI.getToken();
+      if (!token) {
+        setUser(null);
+        return;
+      }
+      try {
+        const userData = await authAPI.getMe();
+        setUser(userData);
+      } catch (error) {
+        setUser(null);
+      }
+    };
+    checkAuth();
+  }, []);
+
+  // Get owner ID
+  const ownerId = user?.id || 'anonymous';
+
+  // Canvas should be provided via navigation state - no auto-creation
+
+  // Save node immediately (for creation, LLM responses, etc.)
+  const saveNodeImmediate = useCallback(async (rfNode, isNew = false, canvasIdOverride = null) => {
+    if (!rfNode) {
+      console.warn('Cannot save node: node is null');
+      return;
+    }
+    
+    // Use override if provided, otherwise use state
+    const currentCanvasId = canvasIdOverride || canvasId;
+    
+    if (!currentCanvasId) {
+      console.error('Cannot save node: canvasId is required', { nodeId: rfNode.id });
+      return;
+    }
+    
+    try {
+      console.log('Saving node:', { nodeId: rfNode.id, isNew, canvasId: currentCanvasId });
+      const nodePayload = reactFlowNodeToNodePayload(rfNode, currentCanvasId, ownerId);
+      console.log('Node payload created:', { id: nodePayload.id, canvas_id: nodePayload.canvas_id });
+      
+      if (isNew || !savedNodeIdsRef.current.has(rfNode.id)) {
+        // Create new node
+        console.log('Creating new node via API...');
+        const result = await nodeAPI.createNode(nodePayload);
+        savedNodeIdsRef.current.add(rfNode.id);
+        console.log('Node created successfully:', result.id);
+      } else {
+        // Update existing node
+        console.log('Updating existing node via API...');
+        const patch = createNodePatch(rfNode, currentCanvasId);
+        await nodeAPI.patchNode(rfNode.id, patch);
+        console.log('Node updated successfully:', rfNode.id);
+      }
+    } catch (error) {
+      console.error('Failed to save node:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response,
+        nodeId: rfNode.id,
+        canvasId: currentCanvasId,
+      });
+    }
+  }, [canvasId, ownerId]);
+
+  // Autosave function for node position changes
+  const saveNodePosition = useCallback(async (data) => {
+    const { nodeId, position, size } = data;
+    if (!canvasId || !nodeId || !position) return;
+    
+    try {
+      const patch = {
+        id: nodeId,
+        canvas_id: canvasId,
+        position: { x: position.x, y: position.y },
+      };
+      if (size) {
+        patch.size = { width: size.width, height: size.height };
+      }
+      await nodeAPI.patchNode(nodeId, patch);
+    } catch (error) {
+      console.error('Failed to save node position:', error);
+    }
+  }, [canvasId]);
+
+  // Autosave hook for node positions (debounced)
+  const autosaveNodePosition = useAutosave(saveNodePosition, 400, false);
 
   const getNodeHeight = useCallback(
     (node, { treatAsExpanded = false } = {}) => {
@@ -313,6 +447,25 @@ export default function FlowPage() {
     qa: QaNode,
     input: InputNode
   }), []);
+
+  // Wrapper for onNodesChange to trigger autosave on position changes
+  const handleNodesChange = useCallback((changes) => {
+    onNodesChange(changes);
+    
+    // Detect position changes and trigger autosave
+    changes.forEach((change) => {
+      if (change.type === 'position' && change.position && change.id) {
+        const node = nodesRef.current.find(n => n.id === change.id);
+        if (node && node.type !== 'input') {
+          autosaveNodePosition({
+            nodeId: change.id,
+            position: change.position,
+            size: node.width && node.height ? { width: node.width, height: node.height } : null,
+          });
+        }
+      }
+    });
+  }, [onNodesChange, autosaveNodePosition]);
 
   const askApi = useCallback(async (question) => {
     const token = authAPI.getToken();
@@ -403,6 +556,12 @@ export default function FlowPage() {
 
   // Handler for when user asks from input node  
   const handleInputAsk = useCallback(async (inputNodeId, question) => {
+    // Canvas must be provided via navigation state
+    if (!canvasId) {
+      console.error('Cannot create node: canvasId is required');
+      return;
+    }
+    
     // Get current nodes synchronously using ref
     const currentNodes = nodesRef.current;
     const inputNode = currentNodes.find(n => n.id === inputNodeId);
@@ -410,6 +569,8 @@ export default function FlowPage() {
     if (!inputNode) return;
     
     const parentId = inputNode.data.parentId ?? null;
+    const parentNode = parentId ? currentNodes.find(n => n.id === parentId) : null;
+    const depth = parentNode ? (parentNode.data.depth || 0) + 1 : 0;
     
     const inputPosition = inputNode.position;
     
@@ -424,7 +585,14 @@ export default function FlowPage() {
     const newNode = {
       id: newNodeId,
       position: inputPosition,
-      data: { question, state: 'loading' },
+      data: { 
+        question, 
+        state: 'loading',
+        parentId,
+        depth,
+        generationType: parentId ? 'manual_followup' : 'root',
+        questionSource: 'user',
+      },
       type: 'qa',
       draggable: true
     };
@@ -449,21 +617,48 @@ export default function FlowPage() {
       });
     }
     
+    // Save node immediately (before LLM call)
+    await saveNodeImmediate(newNode, true);
+    
+    // Use canvasId directly (no need to check ensureCanvas)
+    
     // Ask API and update node
     try {
         const result = await askApiRef.current(question);
+      const updatedNode = {
+        ...newNode,
+        data: { 
+          question: result.question, 
+          answer: result.answer, 
+          state: 'answer',
+          onAskFollowUp: handleAskFollowUpRef.current,
+          images: result.image_results || [],
+          llm: {
+            model: result.model || null,
+            latencyMs: result.latency_ms || null,
+          },
+          parentId,
+          depth,
+          generationType: parentId ? 'manual_followup' : 'root',
+        }
+      };
+      
+      // CRITICAL: Update node in place - it should already exist with loading state
+      // This ensures smooth transition from skeleton to answer
       setNodes((prev) => {
-        return prev.map((n) => n.id === newNodeId ? {
-          ...n,
-          data: { 
-            question: result.question, 
-            answer: result.answer, 
-            state: 'answer',
-            onAskFollowUp: handleAskFollowUpRef.current,
-            images: result.image_results || []
-          }
-        } : n);
+        const existingIndex = prev.findIndex((n) => n.id === newNodeId);
+        if (existingIndex === -1) {
+          // Node doesn't exist (shouldn't happen), add it
+          console.warn('Node not found when updating with answer, adding:', updatedNode);
+          return [...prev, updatedNode];
+        }
+        // Node exists - update it in place
+        return prev.map((n) => n.id === newNodeId ? updatedNode : n);
       });
+      
+      // Save node with answer immediately
+      await saveNodeImmediate(updatedNode, false);
+      
       addSuggestionChildrenRef.current(newNodeId, inputPosition, result.follow_ups || []);
     } catch (e) {
       // Don't show error message if it's an upgrade redirect
@@ -471,17 +666,34 @@ export default function FlowPage() {
         return; // Let the redirect happen
       }
       console.error('Ask API error:', e);
-      setNodes((prev) => prev.map((n) => n.id === newNodeId ? {
-        ...n,
+      // CRITICAL: Create error node that stays visible
+      const errorNode = {
+        ...newNode,
         data: { 
           question, 
           answer: `Error: ${e.message || 'Failed to fetch answer.'}`, 
-          state: 'answer',
-          onAskFollowUp: handleAskFollowUpRef.current
+          state: 'answer', // Show error as answer so node stays visible
+          onAskFollowUp: handleAskFollowUpRef.current,
+          parentId,
+          depth,
+          generationType: parentId ? 'manual_followup' : 'root',
+          questionSource: 'user',
         }
-      } : n));
+      };
+      // CRITICAL: Update node in place - it should already exist with loading state
+      setNodes((prev) => {
+        const existingIndex = prev.findIndex((n) => n.id === newNodeId);
+        if (existingIndex === -1) {
+          // Node doesn't exist (shouldn't happen), add it
+          console.warn('Node not found when updating with error, adding:', errorNode);
+          return [...prev, errorNode];
+        }
+        // Node exists - update it in place
+        return prev.map((n) => n.id === newNodeId ? errorNode : n);
+      });
+      await saveNodeImmediate(errorNode, false);
     }
-  }, [setNodes, setEdges, createDottedEdge]);
+  }, [setNodes, setEdges, createDottedEdge, canvasId, saveNodeImmediate]);
 
   // Handler to create an input node when "Ask follow up" is clicked
   const handleAskFollowUp = useCallback((parentId) => {
@@ -570,7 +782,7 @@ export default function FlowPage() {
   const creatingChildrenRef = useRef(new Set());
   const parentsWithChildrenRef = useRef(new Set());
   
-  const addSuggestionChildren = useCallback((parentId, parentPos, followUps, { relaxSpacing = false } = {}) => {
+  const addSuggestionChildren = useCallback(async (parentId, parentPos, followUps, { relaxSpacing = false } = {}) => {
     // Ensure exactly 3 child nodes are always created
     const limitedFollowUps = followUps.slice(0, 3);
     
@@ -581,6 +793,18 @@ export default function FlowPage() {
     
     // Mark that we're creating children for this parent IMMEDIATELY
     creatingChildrenRef.current.add(parentId);
+    
+    // CRITICAL: Get parent node to calculate depth - use functional state to get latest
+    // First try nodesRef, but if parent not found, we'll get it from state update
+    let parentNode = nodesRef.current.find(n => n.id === parentId);
+    
+    // If parent not found in ref, it might be stale - we'll get it in the state update
+    if (!parentNode) {
+      console.warn(`Parent node ${parentId} not found in nodesRef, will check in state update`);
+    }
+    
+    const parentDepth = parentNode?.data?.depth || 0;
+    const childDepth = parentDepth + 1;
     
     // Calculate depth level based on parent's X position (root starts at x: 200)
     const rootX = 200;
@@ -607,7 +831,15 @@ export default function FlowPage() {
       const node = {
         id: `node_${timestamp}_${idx}_${Math.random().toString(36).slice(2,7)}`,
         position: { x: parentPos.x + offsetX, y: positionY },
-        data: { question: q, state: 'suggestion', onAskFollowUp: handleAskFollowUpRef.current },
+        data: { 
+          question: q, 
+          state: 'suggestion', 
+          onAskFollowUp: handleAskFollowUpRef.current,
+          parentId,
+          depth: childDepth,
+          generationType: 'auto_suggestion',
+          questionSource: 'llm_suggested',
+        },
         type: 'qa'
       };
       stagedNodes.push(node);
@@ -626,6 +858,7 @@ export default function FlowPage() {
       
       // If any child edges exist, don't create new ones
       if (existingChildEdges.length > 0) {
+        console.log(`Children already exist for parent ${parentId}, skipping creation`);
         parentsWithChildrenRef.current.add(parentId);
         creatingChildrenRef.current.delete(parentId);
         return prevEdges;
@@ -643,12 +876,35 @@ export default function FlowPage() {
     // CRITICAL: Add nodes in a separate but batched update
     // React 18+ will automatically batch these with the setEdges call above
     setNodes((prevNodes) => {
-      // Check if nodes already exist (prevent duplicates)
+      // CRITICAL: Verify parent node exists before creating children
+      const parentNodeInState = prevNodes.find(n => n.id === parentId);
+      if (!parentNodeInState) {
+        console.error(`Cannot create children: Parent node ${parentId} not found in nodes array`);
+        creatingChildrenRef.current.delete(parentId);
+        return prevNodes; // Don't add children if parent doesn't exist
+      }
+      
+      // CRITICAL: Check if children already exist by checking for nodes with same parentId
+      // This prevents duplicates from React Strict Mode or multiple calls
+      const existingChildren = prevNodes.filter(n => 
+        n.data?.parentId === parentId && 
+        n.data?.generationType === 'auto_suggestion'
+      );
+      
+      if (existingChildren.length > 0) {
+        console.log(`Children already exist for parent ${parentId} (${existingChildren.length} found), skipping creation`);
+        parentsWithChildrenRef.current.add(parentId);
+        creatingChildrenRef.current.delete(parentId);
+        return prevNodes;
+      }
+      
+      // Check if nodes already exist by ID (prevent duplicates)
       const existingNodeIds = newNodes.map(n => n.id);
       const duplicateNodes = prevNodes.filter(n => existingNodeIds.includes(n.id));
       
       // If duplicates exist, nodes already exist so edges should too
       if (duplicateNodes.length > 0) {
+        console.log(`Duplicate node IDs found, skipping creation`);
         creatingChildrenRef.current.delete(parentId);
         return prevNodes;
       }
@@ -656,15 +912,39 @@ export default function FlowPage() {
       // Mark parent as having children
       parentsWithChildrenRef.current.add(parentId);
       
+      // CRITICAL: Maintain node order - parent nodes first, then children
+      // Sort to ensure parent is always before its children
+      const allNodes = [...prevNodes, ...newNodes];
+      const sortedAllNodes = allNodes.sort((a, b) => {
+        // Root nodes (parentId === null) always come first
+        if (a.data.parentId === null && b.data.parentId !== null) return -1;
+        if (a.data.parentId !== null && b.data.parentId === null) return 1;
+        
+        // Sort by depth (shallow to deep)
+        const depthA = a.data.depth || 0;
+        const depthB = b.data.depth || 0;
+        if (depthA !== depthB) return depthA - depthB;
+        
+        // Same depth: sort by Y position (top to bottom)
+        return (a.position.y || 0) - (b.position.y || 0);
+      });
+      
       // Add nodes - edges are already being added in the setEdges call above
-      return [...prevNodes, ...newNodes];
+      return sortedAllNodes;
     });
+    
+    // Save all suggestion nodes immediately
+    if (canvasId) {
+      for (const node of newNodes) {
+        await saveNodeImmediate(node, true);
+      }
+    }
     
     // Clean up creating flag after state settles
     setTimeout(() => {
       creatingChildrenRef.current.delete(parentId);
     }, 500);
-  }, [setNodes, setEdges, createDottedEdge]);
+  }, [setNodes, setEdges, createDottedEdge, canvasId, saveNodeImmediate]);
   
   addSuggestionChildrenRef.current = addSuggestionChildren;
 
@@ -816,53 +1096,99 @@ export default function FlowPage() {
   // Initialize with the prompt from navigation state and ask the backend
   React.useEffect(() => {
     const prompt = location.state?.prompt;
+    const canvasIdFromState = location.state?.canvasId;
+    
+    console.log('FlowPage useEffect triggered', { prompt, canvasIdFromState, locationState: location.state });
     
     // Prevent duplicate initialization for the same prompt (React Strict Mode)
-    const initKey = prompt ?? "__default__";
-    if (initializedPromptRef.current === initKey) return;
+    const initKey = prompt ?? canvasIdFromState ?? "__default__";
     
+    // CRITICAL: Use module-level Set to track initialization (persists across Strict Mode unmounts/remounts)
+    const promptKey = prompt ? `prompt:${prompt}:${canvasIdFromState}` : null;
+    if (promptKey && initializedPrompts.has(promptKey)) {
+      console.log('Skipping initialization - prompt already initialized (module-level check)', promptKey);
+      return;
+    }
+    
+    // CRITICAL: Prevent duplicate initialization
+    // Check if we're already initializing OR already initialized with this key
+    if (isInitializingRef.current) {
+      console.log('Skipping initialization - already in progress');
+      return;
+    }
+    
+    if (initializedPromptRef.current === initKey && canvasLoaded) {
+      console.log('Skipping initialization - already loaded', { initKey, canvasLoaded });
+      return;
+    }
+    
+    // Check if root node already exists (prevent duplicates from Strict Mode)
+    // CRITICAL: Check both nodes state and ref to catch duplicates early
+    if (prompt && canvasIdFromState) {
+      // First check nodes state (most up-to-date)
+      const existingInState = nodes.find(n => 
+        n.data?.parentId === null && 
+        n.data?.question === prompt &&
+        n.data?.generationType === 'root'
+      );
+      
+      // Also check ref as fallback
+      const existingInRef = nodesRef.current.find(n => 
+        n.data?.parentId === null && 
+        n.data?.question === prompt &&
+        n.data?.generationType === 'root'
+      );
+      
+      const existingRootNode = existingInState || existingInRef;
+      
+      if (existingRootNode) {
+        console.log('Skipping initialization - root node already exists', existingRootNode.id);
+        initializedPromptRef.current = initKey;
+        if (promptKey) initializedPrompts.add(promptKey);
+        setCanvasLoaded(true);
+        isInitializingRef.current = false; // Reset flag since we're skipping
+        return;
+      }
+    }
+    
+    console.log('Starting initialization', { initKey, canvasLoaded, previousInitKey: initializedPromptRef.current });
+    const previousInitKey = initializedPromptRef.current;
     initializedPromptRef.current = initKey;
+    if (promptKey) initializedPrompts.add(promptKey); // Mark as initialized immediately
+    isInitializingRef.current = true; // Mark as initializing
     
-    // Clear existing edges for new initialization
-    setEdges([]);
-    // Clear tracking refs for new initialization
-    creatingChildrenRef.current.clear();
-    parentsWithChildrenRef.current.clear();
+    // Only reset and clear if this is a NEW initialization (different key)
+    // This prevents clearing nodes that are already rendered
+    if (previousInitKey !== initKey) {
+      console.log('New initialization detected, clearing state');
+      // CRITICAL: Don't set canvasLoaded here - set it when nodes are actually set
+      // Setting it too early causes ReactFlow to render before nodes exist
+      setCanvasLoaded(false);
+      // Clear existing edges for new initialization
+      setEdges([]);
+      // CRITICAL: Only clear nodes if we're NOT immediately setting a new node
+      // This prevents the flicker where nodes disappear then reappear
+      if (!prompt && !canvasIdFromState) {
+        // Only clear if we're showing input node (no prompt/canvas)
+        setNodes([]);
+      }
+      // If we have a prompt or canvasId, we'll set nodes immediately below
+      // so don't clear here to avoid flicker
+      
+      // Clear tracking refs for new initialization
+      creatingChildrenRef.current.clear();
+      parentsWithChildrenRef.current.clear();
+      savedNodeIdsRef.current.clear();
+      currentRootNodeIdRef.current = null; // Clear previous root node ref
+      isInitializingRef.current = false; // Reset initialization flag for new init
+      // Note: We keep initializedPrompts Set entries to prevent duplicates across navigations
+    }
     
     const rootPos = { x: 200, y: 200 };
 
-    if (prompt) {
-      const rootId = `node_${Date.now()}`;
-      const initialNode = {
-        id: rootId,
-        position: rootPos,
-        data: { question: prompt, state: 'loading' },
-        type: 'qa',
-        draggable: true
-      };
-      setNodes([initialNode]);
-
-      (async () => {
-        try {
-          const result = await askApi(prompt);
-          setNodes((prev) => prev.map((n) => n.id === rootId ? {
-            ...n,
-            data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current, images: result.image_results || [] }
-          } : n));
-          addSuggestionChildren(rootId, rootPos, result.follow_ups || []);
-        } catch (e) {
-          // Don't show error message if it's an upgrade redirect
-          if (e.isUpgradeRequired) {
-            return; // Let the redirect happen
-          }
-          console.error('Ask API error:', e);
-          setNodes((prev) => prev.map((n) => n.id === rootId ? {
-            ...n,
-            data: { question: prompt, answer: `Error: ${e.message || 'Failed to fetch answer.'}`, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
-          } : n));
-        }
-      })();
-    } else {
+    // Show input node immediately if no prompt (don't block rendering)
+    if (!prompt && !canvasIdFromState) {
+      console.log('No prompt or canvasId - showing input node');
       const inputNodeId = `input_root_${Date.now()}`;
       const inputNode = {
         id: inputNodeId,
@@ -878,95 +1204,377 @@ export default function FlowPage() {
         draggable: false
       };
       setNodes([inputNode]);
+      setCanvasLoaded(true);
+      return; // Exit early
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state]);
 
-  // Verify JWT token with backend
-  useEffect(() => {
-    const checkAuthentication = async () => {
-      const token = authAPI.getToken();
+    // CRITICAL: If we have a prompt, set the node synchronously BEFORE async operations
+    // This ensures the node is visible immediately with the question and loading state
+    let rootId = null;
+    let initialNode = null;
+    if (prompt && canvasIdFromState) {
+      console.log('Setting initial node synchronously for prompt', prompt);
+      
+      // CRITICAL: Check if root node already exists by question text BEFORE generating new ID
+      // This prevents duplicates when React Strict Mode runs the effect twice
+      // Check both nodes state and ref to catch duplicates
+      const existingInState = nodes.find(n => 
+        n.data?.parentId === null && 
+        n.data?.question === prompt &&
+        n.data?.generationType === 'root'
+      );
+      const existingInRef = nodesRef.current.find(n => 
+        n.data?.parentId === null && 
+        n.data?.question === prompt &&
+        n.data?.generationType === 'root'
+      );
+      const existingRootByQuestion = existingInState || existingInRef;
+      
+      if (existingRootByQuestion) {
+        console.log('Root node with this question already exists, reusing:', existingRootByQuestion.id);
+        rootId = existingRootByQuestion.id;
+        initialNode = existingRootByQuestion;
+        currentRootNodeIdRef.current = rootId;
+        setCanvasId(canvasIdFromState);
+        setCanvasLoaded(true);
+        
+        // If node already has an answer, skip API call
+        if (existingRootByQuestion.data?.state === 'answer') {
+          console.log('Root node already has answer, skipping API call');
+          isInitializingRef.current = false;
+          return; // Exit early, don't proceed with async initialization
+        }
+        // If node is still loading, proceed with API call to update it
+        console.log('Root node exists but is loading, proceeding with API call');
+      } else {
+        // CRITICAL: Set canvasId state before creating nodes
+        setCanvasId(canvasIdFromState);
+        console.log('Canvas ID set', canvasIdFromState);
 
-      if (!token) {
-        setIsAuthenticated(false);
-        setUser(null);
-        setIsCheckingAuth(false);
-        return;
+        rootId = `node_${Date.now()}`;
+        initialNode = {
+          id: rootId,
+          position: rootPos,
+          data: { 
+            question: prompt, 
+            state: 'loading',
+            parentId: null,
+            depth: 0,
+            generationType: 'root',
+            questionSource: 'user',
+            // Add onAskFollowUp handler even for loading state (will be updated later)
+            onAskFollowUp: handleAskFollowUpRef.current,
+          },
+          type: 'qa',
+          draggable: true
+        };
+        
+        console.log('Setting initial node', initialNode);
+        // CRITICAL: Set nodes synchronously BEFORE any async operations
+        // This ensures the node is visible immediately with the question and loading state
+        // Use a ref to track if we found a duplicate (so async block can use correct node)
+        const duplicateFoundRef = { found: false, existingNode: null };
+        
+        setNodes((prev) => {
+          // CRITICAL: Double-check node doesn't exist in prev state by question text
+          // This prevents duplicates when React Strict Mode runs setNodes twice
+          const duplicate = prev.find(n => 
+            n.data?.parentId === null && 
+            n.data?.question === prompt &&
+            n.data?.generationType === 'root'
+          );
+          if (duplicate) {
+            console.log('Node with this question already exists in state, skipping add. Existing node ID:', duplicate.id);
+            // Store the existing node's ID in ref for use in async block
+            duplicateFoundRef.found = true;
+            duplicateFoundRef.existingNode = duplicate;
+            currentRootNodeIdRef.current = duplicate.id;
+            return prev;
+          }
+          console.log('Adding new root node to state:', rootId);
+          return [...prev, initialNode];
+        });
+        
+        // CRITICAL: If duplicate was found, update rootId and initialNode to match existing node
+        if (duplicateFoundRef.found && duplicateFoundRef.existingNode) {
+          console.log('Updating rootId and initialNode to match existing node:', duplicateFoundRef.existingNode.id);
+          rootId = duplicateFoundRef.existingNode.id;
+          initialNode = duplicateFoundRef.existingNode;
+          currentRootNodeIdRef.current = rootId;
+        }
+        // CRITICAL: Ensure canvasLoaded is true so ReactFlow renders immediately
+        setCanvasLoaded(true);
+        console.log('Node set with question and loading state, canvas marked as loaded');
+        
+        // CRITICAL: Store the rootId in a ref to prevent accidental clearing
+        currentRootNodeIdRef.current = rootId;
+        
+        // CRITICAL: Mark node as saved in ref immediately to prevent duplicate saves
+        // This ensures the node persists in state
+        savedNodeIdsRef.current.add(rootId);
       }
+    }
 
+    // Then do async initialization (non-blocking)
+    (async () => {
       try {
-        // Verify token with backend
-        const userData = await authAPI.getMe();
-        setIsAuthenticated(true);
-        setUser(userData);
-        setAvatarError(false);
-        // Update localStorage with fresh user data
-        authAPI.saveAuth(token, userData);
+        console.log('Async initialization started', { prompt, canvasIdFromState, currentCanvasId: canvasId });
+        
+        // CRITICAL: If we have a prompt, we're creating a NEW node, so DON'T load from canvas
+        // Only load from canvas if we DON'T have a prompt (viewing existing canvas)
+        if (canvasIdFromState && !prompt) {
+          console.log('Loading existing canvas (no prompt provided)', canvasIdFromState);
+          try {
+            setCanvasId(canvasIdFromState);
+            const nodesData = await nodeAPI.getCanvasNodes(canvasIdFromState);
+            console.log('Loaded nodes from canvas', nodesData.length);
+            const rfNodes = nodesData.map(nodePayloadToReactFlowNode);
+            // Add onAskFollowUp handler to all nodes that need it
+            // CRITICAL: Add handler to ALL nodes with answers, not just 'answer' state
+            // This includes root nodes and all turn nodes
+            const rfNodesWithHandlers = rfNodes.map(node => {
+              // Add handler if node has an answer (state is 'answer' or 'loading' with potential answer)
+              // Also add to root nodes (parentId is null) regardless of state
+              const needsHandler = (
+                (node.data.state === 'answer' || node.data.state === 'loading') &&
+                !node.data.onAskFollowUp
+              ) || (
+                node.data.parentId === null && // Root node
+                !node.data.onAskFollowUp
+              );
+              
+              if (needsHandler) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    onAskFollowUp: handleAskFollowUpRef.current,
+                  }
+                };
+              }
+              return node;
+            });
+            
+            // CRITICAL: Sort nodes to ensure parent nodes render first
+            // Order: root nodes (parentId === null) first, then by depth, then by Y position
+            const sortedNodes = rfNodesWithHandlers.sort((a, b) => {
+              // Root nodes (parentId === null) always come first
+              if (a.data.parentId === null && b.data.parentId !== null) return -1;
+              if (a.data.parentId !== null && b.data.parentId === null) return 1;
+              
+              // If both are root nodes or both have parents, sort by depth
+              const depthA = a.data.depth || 0;
+              const depthB = b.data.depth || 0;
+              if (depthA !== depthB) return depthA - depthB;
+              
+              // Same depth: sort by Y position (top to bottom)
+              return (a.position.y || 0) - (b.position.y || 0);
+            });
+            
+            console.log('Sorted nodes for rendering:', sortedNodes.map(n => ({
+              id: n.id,
+              parentId: n.data.parentId,
+              depth: n.data.depth
+            })));
+            
+            setNodes(sortedNodes);
+            // Create edges for loaded nodes
+            // CRITICAL: Only create edges where parent node exists in loaded nodes
+            const nodeIds = new Set(sortedNodes.map(n => n.id));
+            const loadedEdges = [];
+            sortedNodes.forEach(node => {
+              if (node.data.parentId) {
+                // Verify parent node exists before creating edge
+                if (nodeIds.has(node.data.parentId)) {
+                  loadedEdges.push(createDottedEdge(node.data.parentId, node.id));
+                } else {
+                  console.warn(
+                    `Skipping edge creation: Parent node ${node.data.parentId} ` +
+                    `not found for child node ${node.id}`
+                  );
+                }
+              }
+            });
+            console.log(`Created ${loadedEdges.length} edges for ${sortedNodes.length} nodes`);
+            setEdges(loadedEdges);
+            // Mark all loaded nodes as saved
+            sortedNodes.forEach(node => savedNodeIdsRef.current.add(node.id));
+            setCanvasLoaded(true);
+            isInitializingRef.current = false; // Mark initialization complete
+            return;
+          } catch (error) {
+            console.error('Failed to load canvas:', error);
+            isInitializingRef.current = false; // Mark initialization complete even on error
+            // Fall through to show input node
+          }
+        }
+
+        // CRITICAL: Process prompt - parent node is already set synchronously above
+        // This ensures the parent node stays visible throughout the API call
+        if (prompt && initialNode && rootId) {
+          console.log('Processing prompt - node already set, proceeding with API call', prompt);
+          
+          // CRITICAL: Verify the node actually exists in state before proceeding
+          // If setNodes found a duplicate, we need to use the existing node
+          const actualNodeInState = nodesRef.current.find(n => 
+            n.data?.parentId === null && 
+            n.data?.question === prompt &&
+            n.data?.generationType === 'root'
+          );
+          
+          if (actualNodeInState && actualNodeInState.id !== rootId) {
+            console.log('Found existing node with different ID, using it instead:', actualNodeInState.id);
+            rootId = actualNodeInState.id;
+            initialNode = actualNodeInState;
+            currentRootNodeIdRef.current = rootId;
+          }
+          
+          // Node is already set synchronously above, now do async operations
+          
+          // Save root node in background (non-blocking) only if it's new
+          // If node already exists, it's already saved
+          if (!savedNodeIdsRef.current.has(rootId)) {
+            saveNodeImmediate(initialNode, true, canvasIdFromState).catch(err => {
+              console.error('Failed to save initial node:', err);
+              // Continue anyway - node is visible in state
+            });
+          } else {
+            console.log('Node already saved, skipping save');
+          }
+
+          // Immediately proceed to API call - node is already visible with skeleton
+          try {
+            console.log('Calling askApi with prompt:', prompt);
+            const result = await askApi(prompt);
+            console.log('AskApi result received', result);
+            const rootNodeWithAnswer = {
+              ...initialNode,
+              data: { 
+                ...initialNode.data,
+                question: result.question, 
+                answer: result.answer, 
+                state: 'answer', 
+                onAskFollowUp: handleAskFollowUpRef.current, 
+                images: result.image_results || [],
+                llm: {
+                  model: result.model || null,
+                  latencyMs: result.latency_ms || null,
+                },
+              }
+            };
+            console.log('Updating node with answer');
+            // CRITICAL: Update node in place - it should already exist in state
+            // This is just updating the state from 'loading' to 'answer'
+            setNodes((prev) => {
+              const nodeIndex = prev.findIndex((n) => n.id === rootId);
+              if (nodeIndex === -1) {
+                // Node doesn't exist - this shouldn't happen, but add it
+                console.warn('Root node not found in prev nodes, adding it:', rootNodeWithAnswer);
+                return [rootNodeWithAnswer, ...prev];
+              }
+              
+              // Node exists - update it in place
+              // This just changes state from 'loading' to 'answer', keeping everything else
+              const updated = [...prev];
+              updated[nodeIndex] = rootNodeWithAnswer;
+              console.log('Updated node state from loading to answer');
+              return updated;
+            });
+            
+            // Save root node with answer immediately (non-blocking)
+            saveNodeImmediate(rootNodeWithAnswer, false).catch(err => {
+              console.error('Failed to save root node with answer:', err);
+            });
+            
+            // CRITICAL: Wait for parent node to render before adding children
+            // This ensures smooth rendering - parent first, then children
+            // Wait for both state update and ReactFlow to render the parent
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            console.log('Adding suggestion children');
+            // Use the ref to ensure we have the latest version
+            addSuggestionChildrenRef.current(rootId, rootPos, result.follow_ups || []);
+            isInitializingRef.current = false; // Mark initialization complete
+          } catch (e) {
+            console.error('Ask API error:', e);
+            // Don't show error message if it's an upgrade redirect
+            if (e.isUpgradeRequired) {
+              isInitializingRef.current = false; // Mark initialization complete
+              return; // Let the redirect happen
+            }
+            const errorNode = {
+              ...initialNode,
+              data: { 
+                ...initialNode.data,
+                question: prompt, 
+                answer: `Error: ${e.message || 'Failed to fetch answer.'}`, 
+                state: 'answer', 
+                onAskFollowUp: handleAskFollowUpRef.current 
+              }
+            };
+            // CRITICAL: Use defensive update - ensure root node always exists
+            setNodes((prev) => {
+              const existingNode = prev.find((n) => n.id === rootId);
+              if (existingNode) {
+                // Node exists, update it
+                const updated = prev.map((n) => n.id === rootId ? errorNode : n);
+                console.log('Updated nodes array with error (node found):', updated);
+                return updated;
+              } else {
+                // Node doesn't exist (shouldn't happen, but be defensive)
+                console.warn('Root node not found in prev nodes, adding error node:', errorNode);
+                return [errorNode, ...prev];
+              }
+            });
+            saveNodeImmediate(errorNode, false).catch(err => {
+              console.error('Failed to save error node:', err);
+            });
+            isInitializingRef.current = false; // Mark initialization complete
+          }
+          
+          return; // Exit early, don't set canvasLoaded again at the end
+        }
+        
+        setCanvasLoaded(true);
+        isInitializingRef.current = false; // Mark initialization complete
       } catch (error) {
-        // Token is invalid or expired
-        authAPI.signout();
-        setIsAuthenticated(false);
-        setUser(null);
-      } finally {
-        setIsCheckingAuth(false);
+        console.error('Initialization error:', error);
+        isInitializingRef.current = false; // Mark initialization complete even on error
+        // Ensure we still show something even if initialization fails
+        if (!prompt && !canvasIdFromState) {
+          const inputNodeId = `input_root_${Date.now()}`;
+          const inputNode = {
+            id: inputNodeId,
+            position: rootPos,
+            type: 'input',
+            data: {
+              parentId: null,
+              onAsk: handleInputAsk,
+              onCancel: handleInputCancel,
+              isRoot: true,
+              showCancel: false
+            },
+            draggable: false
+          };
+          setNodes([inputNode]);
+        }
+        setCanvasLoaded(true);
       }
-    };
+    })();
+  }, [location.state?.prompt, location.state?.canvasId, handleInputAsk, handleInputCancel, createDottedEdge, saveNodeImmediate, navigate, setNodes, setEdges]); // Dependencies needed for initialization
 
-    checkAuthentication();
-  }, []);
-
-  const handleSignOut = async () => {
-    setIsLoggingOut(true);
-    setShowUserMenu(false);
-
-    try {
-      // Call backend logout with delay for better UX
-      await authAPI.logout();
-      // Intentional delay to make logout feel more secure and intentional
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Even if there's an error, clear local storage
-      authAPI.signout();
-    } finally {
-      // Clear state regardless of backend call result
-      setIsAuthenticated(false);
-      setUser(null);
-      setIsLoggingOut(false);
-    }
-  };
-
-  const handleMenuOption = (option) => {
-    setShowUserMenu(false);
-    switch (option) {
-      case 'email':
-        alert(`Email: ${user?.email || 'Not available'}`);
-        break;
-      case 'upgrade':
-        navigate('/pricing');
-        break;
-      case 'settings':
-        console.log('Settings clicked');
-        break;
-      case 'help':
-        console.log('Help clicked');
-        break;
-      case 'community':
-        console.log('Community clicked');
-        break;
-      case 'logout':
-        handleSignOut();
-        break;
-      default:
-        break;
-    }
-  };
 
   const onNodeClick = useCallback(async (_evt, node) => {
     if (node?.data?.state !== 'suggestion') return;
     const nodeId = node.id;
     const question = node.data.question;
     const nodePosition = node.position; // Store position before any state changes
+
+    // Canvas must be provided via navigation state
+    if (!canvasId) {
+      console.error('Cannot create node: canvasId is required');
+      return;
+    }
 
     // Clear this node from tracking refs to ensure it can create children
     // (it was a child, but now it's becoming a parent)
@@ -990,21 +1598,80 @@ export default function FlowPage() {
       }))
     );
 
-    // Turn suggestion into a loading QA node
-    setNodes((prev) => prev.map((n) => n.id === nodeId ? {
-      ...n,
-      data: { question, state: 'loading' },
+    // CRITICAL: Turn suggestion into a loading QA node - node stays visible with skeleton
+    const loadingNode = {
+      ...node,
+      data: { 
+        ...node.data,
+        question, 
+        state: 'loading', // Show skeleton loading animation
+        node_kind: 'turn',
+        // Preserve all existing data to ensure node stays visible
+        parentId: node.data.parentId,
+        depth: node.data.depth,
+        generationType: node.data.generationType || 'auto_suggestion',
+        questionSource: node.data.questionSource || 'llm_suggested',
+      },
       type: 'qa'
-    } : n));
+    };
+    
+    // CRITICAL: Update node in place - it should already exist, just change state
+    // This ensures the node stays visible with skeleton loading
+    setNodes((prev) => {
+      const existingIndex = prev.findIndex((n) => n.id === nodeId);
+      if (existingIndex === -1) {
+        // Node doesn't exist (shouldn't happen), add it
+        console.warn('Node not found in prev nodes, adding loading node:', loadingNode);
+        return [...prev, loadingNode];
+      }
+      // Node exists - update it in place to show skeleton
+      return prev.map((n) => n.id === nodeId ? loadingNode : n);
+    });
+    
+    // Save node immediately (converting from suggestion to turn)
+    await saveNodeImmediate(loadingNode, false);
 
     try {
       const result = await askApi(question);
       
-      // Update node state to answer
-      setNodes((prev) => prev.map((n) => n.id === nodeId ? {
-        ...n,
-        data: { question: result.question, answer: result.answer, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current, images: result.image_results || [] }
-      } : n));
+      // CRITICAL: Update node state to answer - node stays visible, just updates content
+      const answerNode = {
+        ...loadingNode,
+        data: { 
+          ...loadingNode.data,
+          question: result.question, 
+          answer: result.answer, 
+          state: 'answer', // Change from 'loading' to 'answer' - skeleton disappears, answer appears
+          onAskFollowUp: handleAskFollowUpRef.current, 
+          images: result.image_results || [],
+          llm: {
+            model: result.model || null,
+            latencyMs: result.latency_ms || null,
+          },
+          // Preserve all existing data
+          parentId: loadingNode.data.parentId,
+          depth: loadingNode.data.depth,
+          generationType: loadingNode.data.generationType,
+          questionSource: loadingNode.data.questionSource,
+        }
+      };
+      
+      // CRITICAL: Update node in place - it should already exist with loading state
+      // This ensures smooth transition from skeleton to answer
+      setNodes((prev) => {
+        const existingIndex = prev.findIndex((n) => n.id === nodeId);
+        if (existingIndex === -1) {
+          // Node doesn't exist (shouldn't happen), add it
+          console.warn('Node not found when updating with answer, adding:', answerNode);
+          return [...prev, answerNode];
+        }
+        // Node exists - update it in place
+        return prev.map((n) => n.id === nodeId ? answerNode : n);
+      });
+      
+      // Save node with answer immediately
+      await saveNodeImmediate(answerNode, false);
+      
       setTimeout(() => {
         const updatedNode = nodesRef.current.find((n) => n.id === nodeId);
         if (updatedNode) {
@@ -1035,10 +1702,35 @@ export default function FlowPage() {
         return; // Let the redirect happen
       }
       console.error('Ask API error:', e);
-      setNodes((prev) => prev.map((n) => n.id === nodeId ? {
-        ...n,
-        data: { question, answer: `Error: ${e.message || 'Failed to fetch answer.'}`, state: 'answer', onAskFollowUp: handleAskFollowUpRef.current }
-      } : n));
+      // CRITICAL: Create error node that stays visible
+      const errorNode = {
+        ...loadingNode,
+        data: { 
+          ...loadingNode.data,
+          question, 
+          answer: `Error: ${e.message || 'Failed to fetch answer.'}`, 
+          state: 'answer', // Show error as answer so node stays visible
+          onAskFollowUp: handleAskFollowUpRef.current,
+          // Preserve all existing data
+          parentId: loadingNode.data.parentId,
+          depth: loadingNode.data.depth,
+          generationType: loadingNode.data.generationType,
+          questionSource: loadingNode.data.questionSource,
+        }
+      };
+      // CRITICAL: Update node in place - it should already exist with loading state
+      setNodes((prev) => {
+        const existingIndex = prev.findIndex((n) => n.id === nodeId);
+        if (existingIndex === -1) {
+          // Node doesn't exist (shouldn't happen), add it
+          console.warn('Node not found when updating with error, adding:', errorNode);
+          return [...prev, errorNode];
+        }
+        // Node exists - update it in place
+        return prev.map((n) => n.id === nodeId ? errorNode : n);
+      });
+      await saveNodeImmediate(errorNode, false);
+      
       setTimeout(() => {
         const updatedNode = nodesRef.current.find((n) => n.id === nodeId);
         if (updatedNode) {
@@ -1060,7 +1752,7 @@ export default function FlowPage() {
         }))
       );
     }
-  }, [askApi, addSuggestionChildren, setNodes, setEdges, moveSiblingsOutOfWay]);
+  }, [askApi, addSuggestionChildren, setNodes, setEdges, moveSiblingsOutOfWay, canvasId, saveNodeImmediate]);
 
   useEffect(() => {
     if (!location.state?.prompt && rfInstance && nodes.length === 1) {
@@ -1074,234 +1766,43 @@ export default function FlowPage() {
     }
   }, [location.state?.prompt, nodes, rfInstance]);
 
+  // Track sidebar state for page padding
+  useEffect(() => {
+    const handleSidebarToggle = () => {
+      const sidebar = document.querySelector('.side-menu');
+      if (sidebar) {
+        setIsMenuOpen(sidebar.classList.contains('active'));
+      }
+    };
+    
+    // Use MutationObserver to watch for sidebar class changes
+    const observer = new MutationObserver(handleSidebarToggle);
+    const sidebar = document.querySelector('.side-menu');
+    if (sidebar) {
+      observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+      handleSidebarToggle(); // Initial check
+    }
+    
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className={`flow-page ${isMenuOpen ? 'sidebar-expanded' : 'sidebar-collapsed'}`}>
-      {/* Sidebar - always visible */}
-      <aside className={`side-menu ${isMenuOpen ? 'active' : ''}`}>
-        {/* Close button - only visible when expanded, top right */}
-        {isMenuOpen && (
-          <button
-            className="side-menu-close"
-            onClick={() => {
-              setIsMenuOpen(false);
-              setShowUserMenu(false);
-            }}
-            aria-label="Close menu"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-
-        {/* Toggle button - only visible when collapsed */}
-        {!isMenuOpen && (
-          <button
-            className="side-menu-toggle"
-            onClick={() => {
-              setIsMenuOpen(true);
-              setShowUserMenu(false);
-            }}
-            aria-label="Expand menu"
-          >
-            <img 
-              src="/logo_blue.svg" 
-              alt="Dots Logo" 
-              className="side-menu-toggle-logo"
-            />
-          </button>
-        )}
-
-        {/* Sidebar icons */}
-        <div className="side-menu-icons">
-          <button
-            className="side-menu-icon"
-            title={isMenuOpen ? "" : "Create new graph"}
-            onClick={() => console.log('Edit clicked')}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            {isMenuOpen && (
-              <span className="side-menu-icon-label">Create new graph</span>
-            )}
-          </button>
-          <button
-            className="side-menu-icon"
-            title={isMenuOpen ? "" : "Search Dots"}
-            onClick={() => console.log('Search clicked')}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            {isMenuOpen && (
-              <span className="side-menu-icon-label">Search Dots</span>
-            )}
-          </button>
-          <button
-            className="side-menu-icon"
-            title={isMenuOpen ? "" : "Images"}
-            onClick={() => console.log('Images clicked')}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-            </svg>
-            {isMenuOpen && (
-              <span className="side-menu-icon-label">Images</span>
-            )}
-          </button>
-        </div>
-
-        {/* User menu bubble - only clickable when sidebar is open */}
-        {isAuthenticated && user && (
-          <div className={`user-menu-bubble ${isMenuOpen ? 'expanded' : ''}`}>
-            <button
-              className="user-menu-bubble-trigger"
-              onClick={() => {
-                if (isMenuOpen) {
-                  setShowUserMenu(!showUserMenu);
-                }
-              }}
-              disabled={!isMenuOpen}
-            >
-              <div className="user-menu-bubble-avatar">
-                {!avatarError && user.picture ? (
-                  <img
-                    src={user.picture}
-                    alt={user.name || user.email}
-                    onError={() => setAvatarError(true)}
-                  />
-                ) : (
-                  <div className="user-menu-bubble-avatar-fallback">
-                    {(user.name || user.email || 'U').charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              {isMenuOpen && (
-                <span className="user-menu-bubble-name">
-                  {user.name || user.email}
-                </span>
-              )}
-            </button>
-
-            {/* User menu popup */}
-            {showUserMenu && (
-              <>
-                <div
-                  className="user-menu-overlay"
-                  onClick={() => setShowUserMenu(false)}
-                />
-                <div className="user-menu-popup">
-                  <div className="user-menu-header">
-                    <div className="user-menu-avatar-large">
-                      {!avatarError && user.picture ? (
-                        <img
-                          src={user.picture}
-                          alt={user.name || user.email}
-                          onError={() => setAvatarError(true)}
-                        />
-                      ) : (
-                        <div className="user-menu-avatar-fallback">
-                          {(user.name || user.email || 'U').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                    <div className="user-menu-info">
-                      <div className="user-menu-name">{user.name || 'User'}</div>
-                      <div className="user-menu-email">{user.email}</div>
-                    </div>
-                  </div>
-                  <div className="user-menu-divider" />
-                  <div className="user-menu-options">
-                    <button
-                      className="user-menu-option"
-                      onClick={() => handleMenuOption('email')}
-                    >
-                      Display email
-                    </button>
-                    <button
-                      className="user-menu-option"
-                      onClick={() => handleMenuOption('upgrade')}
-                    >
-                      Upgrade plan
-                    </button>
-                    <button
-                      className="user-menu-option"
-                      onClick={() => handleMenuOption('settings')}
-                    >
-                      Settings
-                    </button>
-                    <button
-                      className="user-menu-option"
-                      onClick={() => handleMenuOption('help')}
-                    >
-                      Help
-                    </button>
-                    <button
-                      className="user-menu-option"
-                      onClick={() => handleMenuOption('community')}
-                    >
-                      Community
-                    </button>
-                    <div className="user-menu-divider" />
-                    <button
-                      className="user-menu-option user-menu-option--danger"
-                      onClick={() => handleMenuOption('logout')}
-                      disabled={isLoggingOut}
-                    >
-                      {isLoggingOut ? 'Logging out...' : 'Log out'}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </aside>
+      <Sidebar 
+        onCanvasSelect={(canvas) => {
+          navigate('/flow', { state: { canvasId: canvas.id } });
+        }}
+        onCreateCanvas={() => {
+          // Navigate to start page - no canvas created yet
+          // Canvas will be created when user asks a question
+          navigate('/start');
+        }}
+        currentCanvasId={location.state?.canvasId}
+      />
 
       {/* Top-right actions */}
       <div className="flow-page__actions">
-        {isAuthenticated ? (
+        {user ? (
           <Link to="/pricing" className="action-btn">
             Upgrade
           </Link>
@@ -1316,7 +1817,7 @@ export default function FlowPage() {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes}

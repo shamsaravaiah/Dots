@@ -8,7 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
  * @param {object} options - Fetch options
  * @returns {Promise<Response>}
  */
-async function apiRequest(endpoint, options = {}) {
+export async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',

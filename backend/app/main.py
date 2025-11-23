@@ -10,10 +10,12 @@ from .config import get_settings
 from .routes import ask as ask_router
 from .routes import canvas as canvas_router
 from .routes import auth as auth_router
+from .routes import node as node_router
 from .services.key_manager import KeyManager
 from .services.llm import LLMService
 from .services.usage import UsageService
 from .services.canvas import CanvasService
+from .services.node import NodeService
 import os
 
 
@@ -47,35 +49,68 @@ def create_app() -> FastAPI:
             _env_path,
         )
 
-    # 1) Check env directly for the paid Gemini key
-    key_value = os.getenv("GEMINI_DOTS_PAID_1")
-    if not key_value:
+    # 1) Collect all available paid Gemini keys from environment
+    key_1 = os.getenv("GEMINI_DOTS_PAID_1")
+    key_2 = os.getenv("GEMINI_DOTS_PAID_2")
+    key_3 = os.getenv("GEMINI_DOTS_PAID_3")
+
+    # Log which keys are found
+    if key_1:
+        logger.info("GEMINI_DOTS_PAID_1 is set (length: %d)", len(key_1))
+    else:
+        logger.warning("GEMINI_DOTS_PAID_1 not found in environment")
+
+    if key_2:
+        logger.info("GEMINI_DOTS_PAID_2 is set (length: %d)", len(key_2))
+    else:
+        logger.warning("GEMINI_DOTS_PAID_2 not found in environment")
+
+    if key_3:
+        logger.info("GEMINI_DOTS_PAID_3 is set (length: %d)", len(key_3))
+    else:
+        logger.warning("GEMINI_DOTS_PAID_3 not found in environment")
+
+    # Require at least one key
+    if not (key_1 or key_2 or key_3):
         logger.error(
-            "GEMINI_DOTS_PAID_1 not found in environment. "
+            "No GEMINI_DOTS_PAID keys found in environment. "
             "Checked .env at: %s",
             _env_path,
         )
         raise RuntimeError(
-            "GEMINI_DOTS_PAID_1 key not configured. "
-            "Set GEMINI_DOTS_PAID_1 in your .env file at %s" % _env_path
+            "At least one GEMINI_DOTS_PAID key must be configured. "
+            "Set GEMINI_DOTS_PAID_1, GEMINI_DOTS_PAID_2, or "
+            "GEMINI_DOTS_PAID_3 in your .env file at %s" % _env_path
         )
-
-    logger.info("GEMINI_DOTS_PAID_1 is set (length: %d)", len(key_value))
 
     # 2) Now get settings (for everything else)
     settings = get_settings()
 
-    # 3) Make sure settings has the key too; if not, patch it from env
-    if not settings.google_dots_paid_api_key_1:
-        logger.warning(
-            "settings.google_dots_paid_api_key_1 is empty; "
-            "falling back to GEMINI_DOTS_PAID_1 from environment."
-        )
-        # This is safe: Settings is just a Pydantic model instance
-        settings.google_dots_paid_api_key_1 = key_value
+    # 3) Patch settings with keys from env if needed
+    if not settings.google_dots_paid_api_key_1 and key_1:
+        settings.google_dots_paid_api_key_1 = key_1
+    if not settings.google_dots_paid_api_key_2 and key_2:
+        settings.google_dots_paid_api_key_2 = key_2
+    if not settings.google_dots_paid_api_key_3 and key_3:
+        settings.google_dots_paid_api_key_3 = key_3
 
-    # 4) Build API key list from the value we now know exists
-    api_keys = [settings.google_dots_paid_api_key_1]
+    # 4) Build API key list (use settings if available, else use env)
+    api_keys = []
+    if settings.google_dots_paid_api_key_1:
+        api_keys.append(settings.google_dots_paid_api_key_1)
+    elif key_1:
+        api_keys.append(key_1)
+
+    if settings.google_dots_paid_api_key_2:
+        api_keys.append(settings.google_dots_paid_api_key_2)
+    elif key_2:
+        api_keys.append(key_2)
+
+    if settings.google_dots_paid_api_key_3:
+        api_keys.append(settings.google_dots_paid_api_key_3)
+    elif key_3:
+        api_keys.append(key_3)
+
     logger.info("Total API keys loaded: %d", len(api_keys))
 
     key_manager = KeyManager(
@@ -88,6 +123,7 @@ def create_app() -> FastAPI:
     )
     usage_service = UsageService(settings=settings)
     canvas_service = CanvasService(settings=settings)
+    node_service = NodeService()
 
     openapi_url = "/openapi.json" if settings.enable_openapi else None
     app = FastAPI(
@@ -100,6 +136,7 @@ def create_app() -> FastAPI:
     app.state.llm_service = llm_service
     app.state.usage_service = usage_service
     app.state.canvas_service = canvas_service
+    app.state.node_service = node_service
 
     app.add_middleware(
         CORSMiddleware,
@@ -114,6 +151,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.router, prefix="/api")
     app.include_router(ask_router.router, prefix="/api")
     app.include_router(canvas_router.router, prefix="/api")
+    app.include_router(node_router.router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     async def health_check() -> dict[str, str]:

@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - users can only read/write their own data
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Canvases collection - users can only access their own canvases
+    match /canvases/{canvasId} {
+      // Allow read if canvas is anonymous or user owns it
+      allow read: if resource.data.owner_id == "anonymous" || 
+                     (request.auth != null && 
+                      resource.data.owner_id == request.auth.uid);
+      
+      // Allow create if setting owner_id to anonymous or authenticated user's ID
+      allow create: if request.resource.data.owner_id == "anonymous" || 
+                        (request.auth != null && 
+                         request.resource.data.owner_id == request.auth.uid);
+      
+      // Allow update/delete if user owns the canvas and doesn't change owner_id
+      allow update, delete: if resource.data.owner_id == "anonymous" || 
+                               (request.auth != null && 
+                                resource.data.owner_id == request.auth.uid &&
+                                request.resource.data.owner_id == resource.data.owner_id);
+    }
+    
+    // Nodes collection - users can only access nodes in their canvases
+    match /nodes/{nodeId} {
+      // Helper function to check canvas ownership
+      function canvasOwnedByUser() {
+        let canvas = get(/databases/$(database)/documents/canvases/$(resource.data.canvas_id));
+        return canvas.data.owner_id == "anonymous" ||
+               (request.auth != null && canvas.data.owner_id == request.auth.uid);
+      }
+      
+      function canvasOwnedByUserForCreate() {
+        let canvas = get(/databases/$(database)/documents/canvases/$(request.resource.data.canvas_id));
+        return canvas.data.owner_id == "anonymous" ||
+               (request.auth != null && canvas.data.owner_id == request.auth.uid);
+      }
+      
+      // Allow read if canvas is owned by user
+      allow read: if exists(/databases/$(database)/documents/canvases/$(resource.data.canvas_id)) &&
+                     canvasOwnedByUser();
+      
+      // Allow create if canvas is owned by user and owner_id matches canvas
+      allow create: if exists(/databases/$(database)/documents/canvases/$(request.resource.data.canvas_id)) &&
+                        canvasOwnedByUserForCreate() &&
+                        request.resource.data.owner_id == get(/databases/$(database)/documents/canvases/$(request.resource.data.canvas_id)).data.owner_id;
+      
+      // Allow update/delete if canvas is owned by user and doesn't change canvas_id or owner_id
+      allow update, delete: if exists(/databases/$(database)/documents/canvases/$(resource.data.canvas_id)) &&
+                                canvasOwnedByUser() &&
+                                request.resource.data.canvas_id == resource.data.canvas_id &&
+                                request.resource.data.owner_id == resource.data.owner_id;
+    }
+  }
+}
+

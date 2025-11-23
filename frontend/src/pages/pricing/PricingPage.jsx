@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import Particles from "../../components/common/Particles/Particles";
+import DotGrid from "../../components/common/DotGrid/DotGrid";
 import Button from "../../components/common/Button/Button";
 import "./PricingPage.css";
 
@@ -8,22 +8,25 @@ export default function PricingPage() {
   const navigate = useNavigate();
 
   const handleNew = () => {
-    navigate("/flow");
+    // Don't create canvas in database - just navigate to start page
+    // Canvas will only be created when user asks a question
+    navigate('/start');
   };
 
   return (
     <div className="pricing-page">
-      {/* Particles background */}
+      {/* DotGrid background - same settings as StartPage */}
       <div className="pricing-page__particles-container">
-        <Particles
-          particleColors={['#ffffff', '#ffffff']}
-          particleCount={800}
-          particleSpread={10}
-          speed={0.1}
-          particleBaseSize={100}
-          moveParticlesOnHover={true}
-          alphaParticles={false}
-          disableRotation={false}
+        <DotGrid
+          dotSize={4}
+          gap={10}
+          baseColor="#000000"
+          activeColor="#4f86f7"
+          proximity={120}
+          shockRadius={250}
+          shockStrength={5}
+          resistance={750}
+          returnDuration={1.5}
         />
       </div>
       
@@ -31,7 +34,7 @@ export default function PricingPage() {
       <div className="pricing-page__content-wrapper">
         <div className="pricing-page__actions">
           <Button onClick={handleNew} className="button--floating">
-             New +
+            New +
           </Button>
         </div>
         <div className="pricing-page__hero">

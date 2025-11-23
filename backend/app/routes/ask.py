@@ -10,7 +10,6 @@ from ..dependencies import provide_llm_service, provide_usage_service
 from ..schemas.ask import AskRequest, AskResponse
 from ..services.llm import LLMService
 from ..services.usage import Subject, UsageService
-from ..services.image_search import ImageSearchService
 
 logger = logging.getLogger("dots.ask")
 router = APIRouter(tags=["ask"])
@@ -93,23 +92,16 @@ async def ask_question(
             model=requested_model,
         )
 
-    # Initialize image search service
-    image_service = ImageSearchService()
+    # Image search disabled for now
     images = []  # Default to empty list
 
     try:
-        import asyncio
         logger.info("Calling LLM with model: %s", requested_model)
-        logger.info("Fetching images for query: %s", payload.question[:50])
+        # Image search disabled - not fetching images
 
-        # Run LLM and image search in parallel
-        llm_task = run_in_threadpool(_invoke)
-        image_task = image_service.search_images(
-            payload.question, per_page=3
-        )
-
-        llm_answer, images = await asyncio.gather(llm_task, image_task)
-        logger.info("LLM call and image search completed successfully")
+        # Run LLM only (image search disabled)
+        llm_answer = await run_in_threadpool(_invoke)
+        logger.info("LLM call completed successfully")
 
         # Increment usage counters after successful call
         # Pass pre-fetched usage data to avoid redundant read
