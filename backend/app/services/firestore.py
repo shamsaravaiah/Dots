@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from functools import lru_cache, wraps
@@ -31,40 +32,41 @@ def initialize_firebase() -> None:
     if firebase_admin._apps:
         return
 
-    # Get the path to the service account JSON file
-    cred_path = None
+    cred = None
+    env_val = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
-    # Option 1: Use environment variable if it exists and file is valid
-    env_cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if env_cred_path and Path(env_cred_path).exists():
-        cred_path = env_cred_path
+    # Option 1: GOOGLE_APPLICATION_CREDENTIALS as file path
+    if env_val and Path(env_val).exists():
+        cred = credentials.Certificate(env_val)
 
-    # Option 2: Use default path relative to backend directory
-    if not cred_path:
+    # Option 2: GOOGLE_APPLICATION_CREDENTIALS as raw JSON (e.g. Render)
+    if cred is None and env_val and env_val.strip().startswith("{"):
+        try:
+            cred_dict = json.loads(env_val)
+            cred = credentials.Certificate(cred_dict)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise RuntimeError(
+                "GOOGLE_APPLICATION_CREDENTIALS is set but invalid JSON: "
+                f"{e}"
+            ) from e
+
+    # Option 3: Default path relative to backend directory
+    if cred is None:
         backend_dir = Path(__file__).parent.parent.parent
-        cred_file = (
-            "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json"
-        )
+        cred_file = "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json"
         default_path = backend_dir / cred_file
         if default_path.exists():
-            cred_path = str(default_path)
+            cred = credentials.Certificate(str(default_path))
 
-    # Initialize Firebase Admin SDK
-    if cred_path:
-        cred = credentials.Certificate(cred_path)
+    if cred is not None:
         firebase_admin.initialize_app(cred)
     else:
-        # Calculate default path for error message
         backend_dir = Path(__file__).parent.parent.parent
-        cred_file = (
-            "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json" 
-        )
-        default_path = backend_dir / cred_file
+        default_path = backend_dir / "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json"
         raise RuntimeError(
             "Firebase credentials not found. "
-            f"Please ensure the credentials file exists at: {default_path} "
-            "or set GOOGLE_APPLICATION_CREDENTIALS environment variable "
-            "to a valid credentials file path."
+            f"Ensure a credentials file exists at: {default_path} "
+            "or set GOOGLE_APPLICATION_CREDENTIALS to a file path or JSON string."
         )
 
 
