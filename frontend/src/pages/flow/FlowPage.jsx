@@ -31,7 +31,6 @@ const COLUMN_X_THRESHOLD = 140;
 const RELAXED_VERTICAL_STEP = 60;
 const NODE_HEIGHT_COLLAPSED = 90;
 const NODE_HEIGHT_EXPANDED = 240;
-const INPUT_NODE_HEIGHT = 130;
 const NODE_VERTICAL_GAP = 40;
 
 // Module-level Set to track initialized prompts (persists across React Strict Mode unmounts/remounts)
@@ -196,81 +195,6 @@ function QaNode({ data, id }) {
   );
 }
 
-// Input node for asking custom follow-up questions
-function InputNode({ data, id }) {
-  const [inputValue, setInputValue] = React.useState('');
-  const textareaRef = React.useRef(null);
-  const { onAsk, onCancel, isRoot = false, showCancel = true } = data;
-
-  React.useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    }
-  }, [inputValue]);
-
-  const handleSubmit = () => {
-    if (inputValue.trim() && onAsk) {
-      onAsk(id, inputValue.trim());
-    }
-  };
-
-  return (
-    <div className={`input-node-wrapper${isRoot ? ' input-node-wrapper--root' : ''}`}>
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{ opacity: 0, pointerEvents: "none" }}
-      />
-
-      {isRoot && (
-        <div className="input-node-hero">
-          <img src="/logo_blue.svg" alt="Dots" className="input-node-icon" />
-          <h3 className="input-node-title">Start Connecting Your Dots</h3>
-        </div>
-      )}
-
-      <textarea
-        ref={textareaRef}
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        placeholder="Type your question..."
-        rows={1}
-        className="input-node-textarea"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && e.ctrlKey && inputValue.trim()) {
-            e.preventDefault();
-            handleSubmit();
-          }
-        }}
-      />
-      <div className={`input-node-actions${isRoot ? ' input-node-actions--root' : ''}`}>
-        {showCancel && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onCancel) onCancel(id);
-            }}
-            className="input-node-button input-node-button--cancel"
-          >
-            Cancel
-          </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleSubmit();
-          }}
-          disabled={!inputValue.trim()}
-          className={`input-node-button input-node-button--ask${inputValue.trim() ? '' : ' is-disabled'}`}
-        >
-          Ask
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function FlowPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -395,7 +319,6 @@ export default function FlowPage() {
   const getNodeHeight = useCallback(
     (node, { treatAsExpanded = false } = {}) => {
       if (!node) return NODE_HEIGHT_COLLAPSED;
-      if (node.type === "input") return INPUT_NODE_HEIGHT;
 
       const state = treatAsExpanded ? "answer" : node.data?.state;
       return state === "answer" ? NODE_HEIGHT_EXPANDED : NODE_HEIGHT_COLLAPSED;
@@ -444,8 +367,7 @@ export default function FlowPage() {
   );
 
   const nodeTypes = useMemo(() => ({ 
-    qa: QaNode,
-    input: InputNode
+    qa: QaNode
   }), []);
 
   // Wrapper for onNodesChange to trigger autosave on position changes
@@ -456,7 +378,7 @@ export default function FlowPage() {
     changes.forEach((change) => {
       if (change.type === 'position' && change.position && change.id) {
         const node = nodesRef.current.find(n => n.id === change.id);
-        if (node && node.type !== 'input') {
+        if (node) {
           autosaveNodePosition({
             nodeId: change.id,
             position: change.position,
@@ -546,234 +468,17 @@ export default function FlowPage() {
     }
   }), []);
 
-  // Handler to cancel input node
-  const handleInputCancel = useCallback((inputNodeId) => {
-    setNodes((prev) => prev.filter(n => n.id !== inputNodeId));
-    setEdges((prev) => prev.filter(e => 
-      e.source !== inputNodeId && e.target !== inputNodeId
-    ));
-  }, [setNodes, setEdges]);
-
-  // Handler for when user asks from input node  
-  const handleInputAsk = useCallback(async (inputNodeId, question) => {
-    // Canvas must be provided via navigation state
-    if (!canvasId) {
-      console.error('Cannot create node: canvasId is required');
-      return;
-    }
-    
-    // Get current nodes synchronously using ref
-    const currentNodes = nodesRef.current;
-    const inputNode = currentNodes.find(n => n.id === inputNodeId);
-    
-    if (!inputNode) return;
-    
-    const parentId = inputNode.data.parentId ?? null;
-    const parentNode = parentId ? currentNodes.find(n => n.id === parentId) : null;
-    const depth = parentNode ? (parentNode.data.depth || 0) + 1 : 0;
-    
-    const inputPosition = inputNode.position;
-    
-    // Remove input node and its edges
-    setNodes((prevNodes) => prevNodes.filter(n => n.id !== inputNodeId));
-    setEdges((prevEdges) => prevEdges.filter(e => 
-      e.source !== inputNodeId && e.target !== inputNodeId
-    ));
-    
-    // Create new QA node at input node's position
-    const newNodeId = `node_${Date.now()}`;
-    const newNode = {
-      id: newNodeId,
-      position: inputPosition,
-      data: { 
-        question, 
-        state: 'loading',
-        parentId,
-        depth,
-        generationType: parentId ? 'manual_followup' : 'root',
-        questionSource: 'user',
-      },
-      type: 'qa',
-      draggable: true
-    };
-    
-    // CRITICAL: Add node FIRST, then edge
-    setNodes((prevNodes) => {
-      // Check if node already exists
-      if (prevNodes.some(n => n.id === newNodeId)) {
-        return prevNodes;
-      }
-      return [...prevNodes, newNode];
-    });
-    
-    // CRITICAL: Create edge from parent to new node (dotted) - MUST be created
-    if (parentId) {
-      const newEdge = createDottedEdge(parentId, newNodeId);
-      setEdges((prevEdges) => {
-        if (prevEdges.some(e => e.id === newEdge.id)) {
-          return prevEdges;
-        }
-        return [...prevEdges, newEdge];
-      });
-    }
-    
-    // Save node immediately (before LLM call)
-    await saveNodeImmediate(newNode, true);
-    
-    // Use canvasId directly (no need to check ensureCanvas)
-    
-    // Ask API and update node
-    try {
-        const result = await askApiRef.current(question);
-      const updatedNode = {
-        ...newNode,
-        data: { 
-          question: result.question, 
-          answer: result.answer, 
-          state: 'answer',
-          onAskFollowUp: handleAskFollowUpRef.current,
-          images: result.image_results || [],
-          llm: {
-            model: result.model || null,
-            latencyMs: result.latency_ms || null,
-          },
-          parentId,
-          depth,
-          generationType: parentId ? 'manual_followup' : 'root',
-        }
-      };
-      
-      // CRITICAL: Update node in place - it should already exist with loading state
-      // This ensures smooth transition from skeleton to answer
-      setNodes((prev) => {
-        const existingIndex = prev.findIndex((n) => n.id === newNodeId);
-        if (existingIndex === -1) {
-          // Node doesn't exist (shouldn't happen), add it
-          console.warn('Node not found when updating with answer, adding:', updatedNode);
-          return [...prev, updatedNode];
-        }
-        // Node exists - update it in place
-        return prev.map((n) => n.id === newNodeId ? updatedNode : n);
-      });
-      
-      // Save node with answer immediately
-      await saveNodeImmediate(updatedNode, false);
-      
-      addSuggestionChildrenRef.current(newNodeId, inputPosition, result.follow_ups || []);
-    } catch (e) {
-      // Don't show error message if it's an upgrade redirect
-      if (e.isUpgradeRequired) {
-        return; // Let the redirect happen
-      }
-      console.error('Ask API error:', e);
-      // CRITICAL: Create error node that stays visible
-      const errorNode = {
-        ...newNode,
-        data: { 
-          question, 
-          answer: `Error: ${e.message || 'Failed to fetch answer.'}`, 
-          state: 'answer', // Show error as answer so node stays visible
-          onAskFollowUp: handleAskFollowUpRef.current,
-          parentId,
-          depth,
-          generationType: parentId ? 'manual_followup' : 'root',
-          questionSource: 'user',
-        }
-      };
-      // CRITICAL: Update node in place - it should already exist with loading state
-      setNodes((prev) => {
-        const existingIndex = prev.findIndex((n) => n.id === newNodeId);
-        if (existingIndex === -1) {
-          // Node doesn't exist (shouldn't happen), add it
-          console.warn('Node not found when updating with error, adding:', errorNode);
-          return [...prev, errorNode];
-        }
-        // Node exists - update it in place
-        return prev.map((n) => n.id === newNodeId ? errorNode : n);
-      });
-      await saveNodeImmediate(errorNode, false);
-    }
-  }, [setNodes, setEdges, createDottedEdge, canvasId, saveNodeImmediate]);
-
-  // Handler to create an input node when "Ask follow up" is clicked
+  // Handler to redirect to start page when "Ask follow up" is clicked
+  // All entry points must go through the start page
   const handleAskFollowUp = useCallback((parentId) => {
-    // Get current state synchronously using refs
-    const currentNodes = nodesRef.current;
-    const currentEdges = edgesRef.current;
-    
-    const parentNode = currentNodes.find(n => n.id === parentId);
-    if (!parentNode) return;
-    
-    // Check if input node already exists for this parent
-    const existingInputNode = currentNodes.find(n => 
-      n.type === 'input' && n.data.parentId === parentId
-    );
-    if (existingInputNode) return;
-    
-    // Find all child nodes of this parent
-    const childEdges = currentEdges.filter(e => e.source === parentId);
-    const childNodeIds = childEdges.map(e => e.target);
-    const childNodes = currentNodes.filter(n => childNodeIds.includes(n.id) && n.type === 'qa');
-    
-    // Calculate input node position
-    const rootX = 200;
-    const baseOffsetX = 350;
-    const depth = Math.round((parentNode.position.x - rootX) / baseOffsetX);
-    const offsetX = baseOffsetX + (depth * 50);
-    
-    // Find the lowest Y position among child nodes
-    let lowestY = parentNode.position.y;
-    if (childNodes.length > 0) {
-      lowestY = Math.max(...childNodes.map(n => n.position.y));
-    }
-    
-    // Position input node below the lowest child (same X as children, Y below)
-    const spacingY = INPUT_NODE_HEIGHT + NODE_VERTICAL_GAP * 0.5;
-    const targetX = parentNode.position.x + offsetX;
-    const desiredY = lowestY + spacingY;
-    const positionY = getNonOverlappingY(
-      targetX,
-      desiredY,
-      INPUT_NODE_HEIGHT,
-      [],
-      false
-    );
-    const inputNodeId = `input_${parentId}_${Date.now()}`;
-    const inputNode = {
-      id: inputNodeId,
-      position: {
-        x: targetX, // Same X as child nodes (to the right of parent)
-        y: positionY // Below the lowest child node
-      },
-      type: 'input',
-      data: {
-        parentId,
-        onAsk: handleInputAsk,
-          onCancel: handleInputCancel,
-          isRoot: false,
-          showCancel: true
-      }
-    };
-    
-    // CRITICAL: Add node FIRST, then edge
-    setNodes((prevNodes) => {
-      // Check if node already exists
-      if (prevNodes.some(n => n.id === inputNodeId)) {
-        return prevNodes;
-      }
-      return [...prevNodes, inputNode];
+    // Navigate to start page - all entry points go through start page
+    navigate('/start', { 
+      state: { 
+        followUpParentId: parentId,
+        canvasId: canvasId 
+      } 
     });
-    
-    // CRITICAL: Create edge from parent to input node (dotted) - MUST be created
-    const newEdge = createDottedEdge(parentId, inputNodeId);
-    setEdges((prevEdges) => {
-      // Check if edge already exists
-      if (prevEdges.some(e => e.id === newEdge.id)) {
-        return prevEdges;
-      }
-      return [...prevEdges, newEdge];
-    });
-  }, [setNodes, setEdges, handleInputCancel, handleInputAsk, createDottedEdge]);
+  }, [navigate, canvasId]);
       
   
   handleAskFollowUpRef.current = handleAskFollowUp;
@@ -1117,9 +822,21 @@ export default function FlowPage() {
       return;
     }
     
+    // Don't block if we're switching to a different canvas
     if (initializedPromptRef.current === initKey && canvasLoaded) {
-      console.log('Skipping initialization - already loaded', { initKey, canvasLoaded });
-      return;
+      // Only skip if we're loading the SAME canvas AND it's already loaded
+      // But allow reloading if canvasId changed
+      const isSameCanvas = canvasIdFromState && 
+                           initializedPromptRef.current === canvasIdFromState;
+      if (isSameCanvas) {
+        console.log('Skipping initialization - already loaded', { initKey, canvasLoaded });
+        return;
+      }
+      // If canvasId changed, we need to reload
+      console.log('Canvas changed, reloading...', { 
+        previous: initializedPromptRef.current, 
+        current: canvasIdFromState 
+      });
     }
     
     // Check if root node already exists (prevent duplicates from Strict Mode)
@@ -1160,20 +877,38 @@ export default function FlowPage() {
     // Only reset and clear if this is a NEW initialization (different key)
     // This prevents clearing nodes that are already rendered
     if (previousInitKey !== initKey) {
-      console.log('New initialization detected, clearing state');
+      console.log('New initialization detected, clearing state', { previousInitKey, initKey });
       // CRITICAL: Don't set canvasLoaded here - set it when nodes are actually set
       // Setting it too early causes ReactFlow to render before nodes exist
       setCanvasLoaded(false);
       // Clear existing edges for new initialization
       setEdges([]);
-      // CRITICAL: Only clear nodes if we're NOT immediately setting a new node
-      // This prevents the flicker where nodes disappear then reappear
-      if (!prompt && !canvasIdFromState) {
+      
+      // CRITICAL: Always clear nodes when switching canvases
+      // Compare canvas IDs properly - previousInitKey could be a prompt or canvasId
+      const previousCanvasId = previousInitKey && 
+                              previousInitKey !== "__default__" &&
+                              !previousInitKey.startsWith('prompt:')
+                              ? previousInitKey 
+                              : null;
+      
+      if (canvasIdFromState) {
+        // Always clear when switching to a different canvas
+        if (previousCanvasId !== canvasIdFromState) {
+          console.log('Switching canvases - clearing old nodes', { 
+            previous: previousCanvasId, 
+            current: canvasIdFromState 
+          });
+          setNodes([]);
+        } else {
+          // Same canvas but different init (e.g., prompt vs no prompt) - still clear
+          console.log('Same canvas but different init - clearing nodes');
+          setNodes([]);
+        }
+      } else if (!prompt && !canvasIdFromState) {
         // Only clear if we're showing input node (no prompt/canvas)
         setNodes([]);
       }
-      // If we have a prompt or canvasId, we'll set nodes immediately below
-      // so don't clear here to avoid flicker
       
       // Clear tracking refs for new initialization
       creatingChildrenRef.current.clear();
@@ -1186,25 +921,10 @@ export default function FlowPage() {
     
     const rootPos = { x: 200, y: 200 };
 
-    // Show input node immediately if no prompt (don't block rendering)
+    // Redirect to start page if no prompt and no canvas (all entry points go through start page)
     if (!prompt && !canvasIdFromState) {
-      console.log('No prompt or canvasId - showing input node');
-      const inputNodeId = `input_root_${Date.now()}`;
-      const inputNode = {
-        id: inputNodeId,
-        position: rootPos,
-        type: 'input',
-        data: {
-          parentId: null,
-          onAsk: handleInputAsk,
-          onCancel: handleInputCancel,
-          isRoot: true,
-          showCancel: false
-        },
-        draggable: false
-      };
-      setNodes([inputNode]);
-      setCanvasLoaded(true);
+      console.log('No prompt or canvasId - redirecting to start page');
+      navigate('/start', { replace: true });
       return; // Exit early
     }
 
@@ -1325,23 +1045,91 @@ export default function FlowPage() {
         if (canvasIdFromState && !prompt) {
           console.log('Loading existing canvas (no prompt provided)', canvasIdFromState);
           try {
+            // CRITICAL: Clear nodes BEFORE loading to prevent showing old nodes
+            // This ensures clean state when switching canvases
+            setNodes([]);
+            setEdges([]);
+            setCanvasLoaded(false);
+            
             setCanvasId(canvasIdFromState);
             const nodesData = await nodeAPI.getCanvasNodes(canvasIdFromState);
             console.log('Loaded nodes from canvas', nodesData.length);
+            
+            // Verify we're still loading the same canvas (prevent race conditions)
+            // Check both the state and the ref to catch any updates
+            const currentCanvasId = canvasId || canvasIdFromState;
+            if (currentCanvasId !== canvasIdFromState) {
+              console.log('Canvas changed during load, aborting', { 
+                expected: canvasIdFromState, 
+                current: currentCanvasId 
+              });
+              isInitializingRef.current = false;
+              return;
+            }
+            
+            if (!nodesData || nodesData.length === 0) {
+              console.log('No nodes found for canvas, redirecting to start page');
+              navigate('/start', { replace: true });
+              isInitializingRef.current = false;
+              return;
+            }
+            
+            console.log('Raw node parent_ids:', nodesData.map(n => ({ 
+              id: n.id, 
+              parent_id: n.parent_id,
+              parent_id_type: typeof n.parent_id,
+              node_kind: n.node_kind,
+              answer_status: n.answer?.status
+            })));
+            
             const rfNodes = nodesData.map(nodePayloadToReactFlowNode);
+            console.log('Converted to ReactFlow nodes:', rfNodes.length);
+            console.log('Node states:', rfNodes.map(n => ({
+              id: n.id,
+              state: n.data.state,
+              parentId: n.data.parentId,
+              hasAnswer: !!n.data.answer
+            })));
+            
+            // CRITICAL: Defensive normalization - ensure parentId is null for root nodes
+            // This handles edge cases where the converter might have missed something
+            const normalizedNodes = rfNodes.map(node => {
+              // Normalize parentId: undefined, null, or empty string should all be null
+              const parentId = (node.data.parentId === undefined || 
+                               node.data.parentId === null || 
+                               node.data.parentId === '') 
+                               ? null 
+                               : node.data.parentId;
+              
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  parentId: parentId,
+                }
+              };
+            });
+            
+            console.log('Normalized nodes - root nodes:', normalizedNodes
+              .filter(n => n.data.parentId === null)
+              .map(n => ({ id: n.id, question: n.data.question?.substring(0, 50) })));
+            
             // Add onAskFollowUp handler to all nodes that need it
-            // CRITICAL: Add handler to ALL nodes with answers, not just 'answer' state
-            // This includes root nodes and all turn nodes
-            const rfNodesWithHandlers = rfNodes.map(node => {
-              // Add handler if node has an answer (state is 'answer' or 'loading' with potential answer)
-              // Also add to root nodes (parentId is null) regardless of state
+            // CRITICAL: Add handler to ALL nodes with answers OR are root nodes
+            // This ensures all nodes can show their content properly
+            const rfNodesWithHandlers = normalizedNodes.map(node => {
+              // Add handler to ALL nodes that have answers OR are root nodes
+              // This ensures all nodes can show their content properly
               const needsHandler = (
-                (node.data.state === 'answer' || node.data.state === 'loading') &&
-                !node.data.onAskFollowUp
-              ) || (
-                node.data.parentId === null && // Root node
-                !node.data.onAskFollowUp
-              );
+                // Nodes with answers (regardless of state)
+                (node.data.answer && node.data.answer.trim().length > 0) ||
+                // Nodes in answer state
+                node.data.state === 'answer' ||
+                // Nodes in loading state (might have answers loading)
+                node.data.state === 'loading' ||
+                // Root nodes (always need handler)
+                node.data.parentId === null
+              ) && !node.data.onAskFollowUp;
               
               if (needsHandler) {
                 return {
@@ -1374,9 +1162,23 @@ export default function FlowPage() {
             console.log('Sorted nodes for rendering:', sortedNodes.map(n => ({
               id: n.id,
               parentId: n.data.parentId,
-              depth: n.data.depth
+              depth: n.data.depth,
+              state: n.data.state,
+              hasAnswer: !!n.data.answer,
+              question: n.data.question?.substring(0, 30)
             })));
+            const rootNodes = sortedNodes.filter(n => n.data.parentId === null);
+            console.log('Root nodes count:', rootNodes.length);
+            console.log('Root nodes:', rootNodes.map(n => ({ id: n.id, question: n.data.question?.substring(0, 50) })));
             
+            if (sortedNodes.length === 0) {
+              console.error('No nodes to render after processing!');
+              isInitializingRef.current = false;
+              setCanvasLoaded(true);
+              return;
+            }
+            
+            console.log('Setting nodes in state:', sortedNodes.length);
             setNodes(sortedNodes);
             // Create edges for loaded nodes
             // CRITICAL: Only create edges where parent node exists in loaded nodes
@@ -1399,14 +1201,28 @@ export default function FlowPage() {
             setEdges(loadedEdges);
             // Mark all loaded nodes as saved
             sortedNodes.forEach(node => savedNodeIdsRef.current.add(node.id));
+            
+            // Verify nodes are actually set
+            setTimeout(() => {
+              const currentNodes = nodesRef.current;
+              console.log('Nodes in state after setNodes:', currentNodes.length);
+              if (currentNodes.length === 0) {
+                console.error('WARNING: Nodes were not set in state! Retrying...');
+                setNodes([...sortedNodes]);
+              }
+            }, 100);
+            
             setCanvasLoaded(true);
             isInitializingRef.current = false; // Mark initialization complete
+            console.log('Canvas loading complete');
             return;
-          } catch (error) {
-            console.error('Failed to load canvas:', error);
-            isInitializingRef.current = false; // Mark initialization complete even on error
-            // Fall through to show input node
-          }
+            } catch (error) {
+              console.error('Failed to load canvas:', error);
+              console.error('Error details:', error.message, error.stack);
+              isInitializingRef.current = false; // Mark initialization complete even on error
+              // Redirect to start page on error - all entry points go through start page
+              navigate('/start', { replace: true });
+            }
         }
 
         // CRITICAL: Process prompt - parent node is already set synchronously above
@@ -1540,28 +1356,14 @@ export default function FlowPage() {
       } catch (error) {
         console.error('Initialization error:', error);
         isInitializingRef.current = false; // Mark initialization complete even on error
-        // Ensure we still show something even if initialization fails
+        // Redirect to start page if initialization fails and no prompt/canvas
         if (!prompt && !canvasIdFromState) {
-          const inputNodeId = `input_root_${Date.now()}`;
-          const inputNode = {
-            id: inputNodeId,
-            position: rootPos,
-            type: 'input',
-            data: {
-              parentId: null,
-              onAsk: handleInputAsk,
-              onCancel: handleInputCancel,
-              isRoot: true,
-              showCancel: false
-            },
-            draggable: false
-          };
-          setNodes([inputNode]);
+          navigate('/start', { replace: true });
         }
         setCanvasLoaded(true);
       }
     })();
-  }, [location.state?.prompt, location.state?.canvasId, handleInputAsk, handleInputCancel, createDottedEdge, saveNodeImmediate, navigate, setNodes, setEdges]); // Dependencies needed for initialization
+  }, [location.state?.prompt, location.state?.canvasId, createDottedEdge, saveNodeImmediate, navigate, setNodes, setEdges]); // Dependencies needed for initialization
 
 
   const onNodeClick = useCallback(async (_evt, node) => {
@@ -1832,6 +1634,8 @@ export default function FlowPage() {
       >
         <MiniMap
           style={{
+            width: 175,
+            height: 150,
             backgroundColor: "#1a1a1a",
             borderRadius: 8,
             border: "1px solid #333",

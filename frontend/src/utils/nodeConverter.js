@@ -70,16 +70,40 @@ export function nodePayloadToReactFlowNode(nodePayload) {
   const question = nodePayload.question || {};
   
   // Determine state based on node_kind and answer status
+  // CRITICAL: Prioritize answer text - if there's answer text, show it
   let state = 'suggestion';
-  if (nodePayload.node_kind === 'turn') {
-    if (answer.status === 'pending' || answer.status === 'idle') {
-      state = 'loading';
-    } else if (answer.status === 'ready' && answer.text) {
+  
+  // CRITICAL: If there's answer text, it should be in 'answer' state
+  if (answer.text && answer.text.trim().length > 0) {
+    // If there's answer text, it should be in 'answer' state
+    if (answer.status === 'ready' || answer.status === 'pending' || !answer.status) {
       state = 'answer';
     } else if (answer.status === 'error') {
       state = 'error';
+    } else {
+      // Default to answer if text exists (regardless of status)
+      state = 'answer';
     }
+  } else if (nodePayload.node_kind === 'turn') {
+    // For turn nodes without answers, check status
+    if (answer.status === 'pending' || answer.status === 'idle') {
+      state = 'loading';
+    } else if (answer.status === 'error') {
+      state = 'error';
+    }
+  } else if (nodePayload.node_kind === 'suggestion') {
+    // Suggestions are always in suggestion state
+    state = 'suggestion';
   }
+  
+  // CRITICAL: Normalize parent_id to null if it's undefined, null, or empty string
+  // This ensures root nodes are correctly identified (parentId === null check)
+  // Backend may return None (Python) which serializes to null, but could also be undefined
+  const parentId = (nodePayload.parent_id === undefined || 
+                   nodePayload.parent_id === null || 
+                   nodePayload.parent_id === '') 
+                   ? null 
+                   : nodePayload.parent_id;
   
   return {
     id: nodePayload.id,
@@ -92,7 +116,7 @@ export function nodePayloadToReactFlowNode(nodePayload) {
       question: question.text || '',
       answer: answer.text || '',
       state: state,
-      parentId: nodePayload.parent_id,
+      parentId: parentId, // Use normalized parentId
       depth: nodePayload.depth || 0,
       generationType: nodePayload.generation_type,
       questionSource: question.source || 'user',
@@ -115,6 +139,7 @@ export function nodePayloadToReactFlowNode(nodePayload) {
     },
     width: nodePayload.size?.width || 320,
     height: nodePayload.size?.height || 200,
+    draggable: true, // CRITICAL: Ensure all loaded nodes are draggable
   };
 }
 

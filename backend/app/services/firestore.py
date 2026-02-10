@@ -57,7 +57,7 @@ def initialize_firebase() -> None:
         # Calculate default path for error message
         backend_dir = Path(__file__).parent.parent.parent
         cred_file = (
-            "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json"
+            "dots-app-backend-firebase-adminsdk-fbsvc-956b80c207.json" 
         )
         default_path = backend_dir / cred_file
         raise RuntimeError(
