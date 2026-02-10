@@ -4,6 +4,15 @@
   background: #0a0a0a;
   color: white;
   position: relative;
+  transition: padding-left 0.3s ease;
+}
+
+.flow-page.sidebar-collapsed {
+  padding-left: 80px; /* Account for collapsed sidebar */
+}
+
+.flow-page.sidebar-expanded {
+  padding-left: 260px; /* Account for expanded sidebar */
 }
 
 /* Skeleton Loading Styles - Responsive and Animated */
@@ -65,17 +74,30 @@
 
 .flow-page__actions {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 20px;
+  right: 20px;
   display: flex;
-  gap: 12px;
-  z-index: 20;
+  gap: 10px;
+  z-index: 100;
 }
 
-.flow-page__actions .button--floating {
-  position: relative;
-  top: auto;
-  right: auto;
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1.5px solid #4f86f7;
+  color: #0e1320;
+  background: #4f86f7;
+  text-decoration: none;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 0 0 3px rgba(79, 134, 247, 0.25);
 }
 
 .input-node-wrapper {
@@ -214,4 +236,78 @@
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+/* Answer text styling - white color for all markdown elements */
+.qa-node-answer {
+  color: #ffffff;
+}
+
+.qa-node-answer p,
+.qa-node-answer h1,
+.qa-node-answer h2,
+.qa-node-answer h3,
+.qa-node-answer h4,
+.qa-node-answer h5,
+.qa-node-answer h6,
+.qa-node-answer li,
+.qa-node-answer strong,
+.qa-node-answer em,
+.qa-node-answer code,
+.qa-node-answer blockquote {
+  color: #ffffff;
+}
+
+/* Enable text selection in node content */
+.react-flow__node {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+}
+
+/* Ensure all text elements in nodes are selectable */
+.react-flow__node * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+}
+
+/* Ensure question and answer text are selectable */
+.qa-node-answer,
+.qa-node-answer p,
+.qa-node-answer h1,
+.qa-node-answer h2,
+.qa-node-answer h3,
+.qa-node-answer ul,
+.qa-node-answer ol,
+.qa-node-answer li,
+.qa-node-answer strong,
+.qa-node-answer em,
+.qa-node-answer code,
+.qa-node-answer blockquote {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  cursor: text;
+}
+
+/* Keep buttons non-selectable */
+.react-flow__node button {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  cursor: pointer !important;
+}
+
+/* Keep images non-selectable */
+.react-flow__node img {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  cursor: pointer !important;
 }
