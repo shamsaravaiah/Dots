@@ -2,7 +2,7 @@
 
 import { apiRequest } from './api';
 
-const API_BASE_URL = 'https://dots-backend-v4wb.onrender.com/api';
+const API_BASE_URL = 'https://renteasy-demo-backend.onrender.com/api';
 
 /**
  * Node API methods.

@@ -1,6 +1,6 @@
 /** API service for backend communication. */
 
-const API_BASE_URL = 'https://dots-backend-v4wb.onrender.com/api';
+const API_BASE_URL = 'https://renteasy-demo-backend.onrender.com/api';
 
 /**
  * Make an API request.
